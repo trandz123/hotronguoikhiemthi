@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -48,6 +49,7 @@ import com.trandz123.hotronguoikhiemthi.ui.camera.captureBitmap
 @Composable
 fun MoneyScreen(
     onBack: () -> Unit,
+    onSwitchMode: () -> Unit = {},
     modifier: Modifier = Modifier,
     viewModel: MoneyViewModel = hiltViewModel(),
 ) {
@@ -76,13 +78,19 @@ fun MoneyScreen(
         return
     }
 
-    MoneyContent(viewModel = viewModel, onBack = onBack, modifier = modifier)
+    MoneyContent(
+        viewModel = viewModel,
+        onBack = onBack,
+        onSwitchMode = onSwitchMode,
+        modifier = modifier,
+    )
 }
 
 @Composable
 private fun MoneyContent(
     viewModel: MoneyViewModel,
     onBack: () -> Unit,
+    onSwitchMode: () -> Unit,
     modifier: Modifier,
 ) {
     val context = LocalContext.current
@@ -119,6 +127,27 @@ private fun MoneyContent(
                         val ic = imageCapture ?: return@detectTapGestures
                         viewModel.onCapture { ic.captureBitmap(context) }
                     })
+                }
+                .pointerInput(Unit) {
+                    // Swipe gesture: doi mode hoac thoat. Threshold 100px de tranh noise.
+                    var dx = 0f
+                    var dy = 0f
+                    detectDragGestures(
+                        onDragStart = { dx = 0f; dy = 0f },
+                        onDragEnd = {
+                            val absX = kotlin.math.abs(dx)
+                            val absY = kotlin.math.abs(dy)
+                            when {
+                                absX < 100f && absY < 100f -> Unit
+                                absY > absX -> {
+                                    if (dy < 0) onSwitchMode()  // vuot len → menu
+                                    else onBack()                // vuot xuong → home
+                                }
+                                else -> Unit  // ignore swipe ngang
+                            }
+                        },
+                        onDrag = { _, drag -> dx += drag.x; dy += drag.y },
+                    )
                 },
             analyzer = analyzer,
             onCameraReady = { ic -> imageCapture = ic },

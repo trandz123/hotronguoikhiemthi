@@ -46,6 +46,7 @@ import com.trandz123.hotronguoikhiemthi.ui.camera.captureBitmap
 @Composable
 fun MenuScreen(
     onBack: () -> Unit,
+    onSwitchMode: () -> Unit = {},
     modifier: Modifier = Modifier,
     viewModel: MenuViewModel = hiltViewModel(),
 ) {
@@ -94,13 +95,14 @@ fun MenuScreen(
         return
     }
 
-    MenuContent(viewModel, onBack, modifier)
+    MenuContent(viewModel, onBack, onSwitchMode, modifier)
 }
 
 @Composable
 private fun MenuContent(
     viewModel: MenuViewModel,
     onBack: () -> Unit,
+    onSwitchMode: () -> Unit,
     modifier: Modifier,
 ) {
     val context = LocalContext.current
@@ -134,6 +136,27 @@ private fun MenuContent(
                                 val ic = imageCapture ?: return@detectTapGestures
                                 viewModel.onCapture { ic.captureBitmap(context) }
                             })
+                        }
+                        .pointerInput(Unit) {
+                            // Swipe len → doi sang doc tien. Swipe xuong → ve home.
+                            var dx = 0f
+                            var dy = 0f
+                            detectDragGestures(
+                                onDragStart = { dx = 0f; dy = 0f },
+                                onDragEnd = {
+                                    val absX = kotlin.math.abs(dx)
+                                    val absY = kotlin.math.abs(dy)
+                                    when {
+                                        absX < 100f && absY < 100f -> Unit
+                                        absY > absX -> {
+                                            if (dy < 0) onSwitchMode()  // vuot len → money
+                                            else onBack()                // vuot xuong → home
+                                        }
+                                        else -> Unit
+                                    }
+                                },
+                                onDrag = { _, drag -> dx += drag.x; dy += drag.y },
+                            )
                         },
                     onCameraReady = { ic -> imageCapture = ic },
                 )

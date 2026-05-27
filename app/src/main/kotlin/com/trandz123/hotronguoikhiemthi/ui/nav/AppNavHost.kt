@@ -33,7 +33,10 @@ fun AppNavHost(modifier: Modifier = Modifier) {
 
     NavHost(
         navController = nav,
-        startDestination = Route.Home.path,
+        // UX accessibility: bo qua Home screen, mo thang MenuScreen.
+        // Nguoi khiem thi khong the "click" chon mode → app default mode menu.
+        // Doi mode bang gesture (swipe len) hoac voice command ("doc tien").
+        startDestination = Route.Menu.path,
         modifier = modifier,
     ) {
         composable(Route.Home.path) {
@@ -45,10 +48,16 @@ fun AppNavHost(modifier: Modifier = Modifier) {
             )
         }
         composable(Route.Money.path) {
-            MoneyScreen(onBack = { nav.popBackStack() })
+            MoneyScreen(
+                onBack = { nav.navigate(Route.Home.path) { launchSingleTop = true } },
+                onSwitchMode = { nav.navigate(Route.Menu.path) { launchSingleTop = true } },
+            )
         }
         composable(Route.Menu.path) {
-            MenuScreen(onBack = { nav.popBackStack() })
+            MenuScreen(
+                onBack = { nav.navigate(Route.Home.path) { launchSingleTop = true } },
+                onSwitchMode = { nav.navigate(Route.Money.path) { launchSingleTop = true } },
+            )
         }
         composable(Route.Settings.path) {
             SettingsScreen(onBack = { nav.popBackStack() })

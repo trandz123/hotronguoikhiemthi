@@ -50,6 +50,7 @@ class MainViewModel @Inject constructor(
             VoiceCommand.READ_MONEY -> emit(NavEvent.GoMoney)
             VoiceCommand.READ_MENU -> emit(NavEvent.GoMenu)
             VoiceCommand.HISTORY -> emit(NavEvent.GoHistory)
+            VoiceCommand.SETTINGS -> emit(NavEvent.GoSettings)
             VoiceCommand.EXIT -> emit(NavEvent.GoHome)
             VoiceCommand.STOP -> tts.stop()
             VoiceCommand.REPEAT -> emit(NavEvent.Repeat)
@@ -79,7 +80,9 @@ class MainViewModel @Inject constructor(
 
     private companion object {
         const val WELCOME_TEXT =
-            "Chào mừng đến với Mắt AI. Chạm đôi vào nút Đọc tiền hoặc Đọc menu để bắt đầu. Lắc điện thoại để dừng đọc."
+            "Chào mừng đến với Mắt AI. App đang đọc menu. Chạm đôi vào màn hình để chụp. " +
+            "Vuốt lên để đổi sang đọc tiền. Vuốt xuống về trang chính. " +
+            "Lắc điện thoại để dừng đọc. Giữ phím tăng âm lượng để nói lệnh."
     }
 }
 

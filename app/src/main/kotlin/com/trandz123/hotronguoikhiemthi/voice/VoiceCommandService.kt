@@ -96,7 +96,8 @@ enum class VoiceCommand(private vararg val keywords: String) {
     RATE_UP("nhanh hơn", "đọc nhanh", "to hơn"),
     RATE_DOWN("chậm hơn", "đọc chậm", "nhỏ hơn"),
     EXIT("thoát", "trang chính", "về"),
-    HISTORY("lịch sử", "lich su");
+    HISTORY("lịch sử", "lich su"),
+    SETTINGS("cài đặt", "cai dat", "thiết lập", "tùy chỉnh");
 
     companion object {
         fun parse(text: String): VoiceCommand? {
