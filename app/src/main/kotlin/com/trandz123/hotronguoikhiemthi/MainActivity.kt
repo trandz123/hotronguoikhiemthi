@@ -9,7 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import com.trandz123.hotronguoikhiemthi.ui.home.HomeScreen
+import com.trandz123.hotronguoikhiemthi.ui.nav.AppNavHost
 import com.trandz123.hotronguoikhiemthi.ui.theme.HoTroTheme
 import dagger.hilt.android.AndroidEntryPoint
 
@@ -29,13 +29,10 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun AppRoot() {
     Scaffold(modifier = Modifier.fillMaxSize()) { padding ->
-        HomeScreen(
+        AppNavHost(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding),
-            onReadMoneyClick = { /* TODO: navigate to MoneyScreen */ },
-            onReadMenuClick = { /* TODO: navigate to MenuScreen */ },
-            onSettingsClick = { /* TODO: navigate to SettingsScreen */ }
         )
     }
 }
