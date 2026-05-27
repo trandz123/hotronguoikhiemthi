@@ -1,0 +1,29 @@
+# Auto-detect text files
+* text=auto eol=lf
+
+# Windows-only scripts: CRLF
+*.bat       text eol=crlf
+*.cmd       text eol=crlf
+
+# Shell scripts must be LF (gradlew chay tren *nix / Git Bash / CI Linux)
+gradlew     text eol=lf
+*.sh        text eol=lf
+
+# Binary files (khong duoc convert line endings)
+*.jar       binary
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.webp      binary
+*.tflite    binary
+*.onnx      binary
+*.pt        binary
+*.pth       binary
+*.h5        binary
+*.keystore  binary
+*.jks       binary
+*.so        binary
+*.aar       binary
+*.apk       binary
+*.aab       binary
