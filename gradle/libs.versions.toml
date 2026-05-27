@@ -18,8 +18,8 @@ camerax = "1.3.4"
 tflite = "2.16.1"
 tfliteSupport = "0.4.4"
 
-# ML Kit OCR
-mlkitText = "19.0.1"
+# ML Kit OCR (Text Recognition v2 - Latin script, ho tro tieng Viet)
+mlkitText = "16.0.1"
 
 # Hilt
 hiltNavigationCompose = "1.2.0"

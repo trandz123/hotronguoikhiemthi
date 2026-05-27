@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -203,26 +204,22 @@ private fun LoadedView(
                 detectTapGestures(onDoubleTap = { onDoubleTap() })
             }
             .pointerInput(Unit) {
-                var totalDragX = 0f
-                var totalDragY = 0f
-                androidx.compose.foundation.gestures.detectHorizontalDragGestures(
-                    onDragStart = { totalDragX = 0f },
+                // 1 drag detector chung: accumulate dx, dy → cuoi drag dieu huong theo
+                // truc co bien thien lon nhat (tranh xung dot voi tap detector).
+                var dx = 0f
+                var dy = 0f
+                detectDragGestures(
+                    onDragStart = { dx = 0f; dy = 0f },
                     onDragEnd = {
-                        if (totalDragX > 100f) onSwipeNext()
-                        else if (totalDragX < -100f) onSwipePrev()
+                        val absX = kotlin.math.abs(dx)
+                        val absY = kotlin.math.abs(dy)
+                        when {
+                            absX < 80f && absY < 80f -> Unit  // mini drag → ignore
+                            absX > absY -> if (dx > 0) onSwipeNext() else onSwipePrev()
+                            else -> if (dy < 0) onSwipeUp() else onSwipeDown()
+                        }
                     },
-                    onHorizontalDrag = { _, delta -> totalDragX += delta },
-                )
-            }
-            .pointerInput(Unit) {
-                var totalDragY = 0f
-                androidx.compose.foundation.gestures.detectVerticalDragGestures(
-                    onDragStart = { totalDragY = 0f },
-                    onDragEnd = {
-                        if (totalDragY < -100f) onSwipeUp()
-                        else if (totalDragY > 100f) onSwipeDown()
-                    },
-                    onVerticalDrag = { _, delta -> totalDragY += delta },
+                    onDrag = { _, drag -> dx += drag.x; dy += drag.y },
                 )
             }
             .padding(24.dp)

@@ -17,12 +17,12 @@ val fptTtsKey: String = localProps.getProperty("fpt.tts.api.key", "")
 
 android {
     namespace = "com.trandz123.hotronguoikhiemthi"
-    compileSdk = 34
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.trandz123.hotronguoikhiemthi"
         minSdk = 26
-        targetSdk = 34
+        targetSdk = 36
         versionCode = 1
         versionName = "0.1.0"
 
