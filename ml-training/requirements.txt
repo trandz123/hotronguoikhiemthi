@@ -1,0 +1,21 @@
+# Python deps cho 2 notebook ml-training
+# Cai trong Colab bang cell dau: !pip install -r requirements.txt
+# Hoac tu cell con: !pip install torch torchvision roboflow datasets tensorflow tflite-support
+
+# Train MobileNetV3 (notebook 01)
+torch>=2.2.0
+torchvision>=0.17.0
+roboflow>=1.1.0          # download dataset Vietnamese Currency Detector
+Pillow>=10.0.0
+numpy>=1.26.0
+tqdm>=4.66.0
+
+# Export ONNX -> TFLite (notebook 01)
+onnx>=1.16.0
+onnx-tf>=1.10.0          # ONNX -> TF SavedModel
+tensorflow>=2.16.0       # TF SavedModel -> TFLite (with INT8 quantization)
+
+# Eval menu parser (notebook 02)
+datasets>=2.18.0         # Hugging Face datasets - tai 5CD-AI/Viet-Menu-gemini-VQA
+pandas>=2.0.0
+matplotlib>=3.8.0
