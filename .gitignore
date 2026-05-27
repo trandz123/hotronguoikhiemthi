@@ -1,0 +1,72 @@
+# =========================
+# Android / Gradle
+# =========================
+*.iml
+.gradle/
+.idea/
+.kotlin/
+build/
+captures/
+local.properties
+.cxx/
+
+# Generated files
+bin/
+gen/
+out/
+release/
+
+# Keystore / Signing (KHÔNG commit!)
+*.jks
+*.keystore
+keystore.properties
+
+# Android NDK
+.externalNativeBuild/
+
+# =========================
+# OS
+# =========================
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# =========================
+# Editor
+# =========================
+*.swp
+.vscode/
+*.code-workspace
+
+# =========================
+# Python / ML training
+# =========================
+ml-training/dataset/
+ml-training/models/
+ml-training/runs/
+ml-training/wandb/
+__pycache__/
+*.pyc
+*.pyo
+.ipynb_checkpoints/
+.venv/
+venv/
+env/
+
+# Model weights (lưu Google Drive / HuggingFace, không commit)
+*.pth
+*.pt
+*.onnx
+*.h5
+# TFLite cuối cùng SẼ commit vào app/src/main/assets/ml/
+# Nhưng các checkpoint trung gian thì không
+ml-training/**/*.tflite
+
+# =========================
+# Secrets
+# =========================
+.env
+.env.local
+secrets.properties
+google-services.json
+fpt-ai-key.txt
