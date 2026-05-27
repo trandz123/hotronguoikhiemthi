@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -5,6 +7,13 @@ plugins {
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
 }
+
+// Doc local.properties (gitignored) de lay secret keys. Truong rong neu chua co.
+val localProps = Properties().apply {
+    val f = rootProject.file("local.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+val fptTtsKey: String = localProps.getProperty("fpt.tts.api.key", "")
 
 android {
     namespace = "com.trandz123.hotronguoikhiemthi"
@@ -19,6 +28,10 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
+
+        // BuildConfig.FPT_TTS_API_KEY = chuoi rong neu user chua dat key.
+        // Engine FPT se tu fallback sang Android TTS khi key trong.
+        buildConfigField("String", "FPT_TTS_API_KEY", "\"$fptTtsKey\"")
     }
 
     buildTypes {
@@ -101,6 +114,9 @@ dependencies {
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
+
+    // DataStore (settings)
+    implementation(libs.androidx.datastore.preferences)
 
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)

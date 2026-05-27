@@ -10,4 +10,5 @@ sealed class Route(val path: String) {
     data object Money : Route("money")
     data object Menu : Route("menu")
     data object Settings : Route("settings")
+    data object History : Route("history")
 }

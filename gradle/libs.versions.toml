@@ -27,6 +27,9 @@ hiltNavigationCompose = "1.2.0"
 # Room (lưu lịch sử quét)
 room = "2.6.1"
 
+# DataStore (preferences)
+datastore = "1.1.1"
+
 # Coroutines
 coroutines = "1.8.1"
 
@@ -74,6 +77,9 @@ androidx-hilt-navigation-compose = { module = "androidx.hilt:hilt-navigation-com
 androidx-room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
 androidx-room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
 androidx-room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
+
+# DataStore
+androidx-datastore-preferences = { module = "androidx.datastore:datastore-preferences", version.ref = "datastore" }
 
 # Coroutines
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }

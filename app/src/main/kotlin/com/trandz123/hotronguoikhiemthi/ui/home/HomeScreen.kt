@@ -8,8 +8,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AttachMoney
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
@@ -29,25 +32,21 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.trandz123.hotronguoikhiemthi.R
 
-/**
- * Man hinh chinh. UI accessibility-first:
- *  - 3 nut lon, cao 96dp (toi thieu 64dp theo WCAG)
- *  - Chu to 28sp, tuong phan cao
- *  - Moi nut co contentDescription mo ta hanh dong + huong dan
- *  - Icon co semantic null de TalkBack khong doc 2 lan
- */
 @Composable
 fun HomeScreen(
     modifier: Modifier = Modifier,
     onReadMoneyClick: () -> Unit,
     onReadMenuClick: () -> Unit,
     onSettingsClick: () -> Unit,
+    onHistoryClick: () -> Unit = {},
 ) {
+    val scroll = rememberScrollState()
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(horizontal = 24.dp, vertical = 32.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp, Alignment.CenterVertically),
+            .verticalScroll(scroll)
+            .padding(horizontal = 24.dp, vertical = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
@@ -62,49 +61,38 @@ fun HomeScreen(
         Text(
             text = stringResource(R.string.home_hint),
             style = MaterialTheme.typography.bodyLarge,
-            fontSize = 18.sp,
+            fontSize = 16.sp,
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(12.dp))
 
         BigActionButton(
             label = stringResource(R.string.action_read_money),
             description = stringResource(R.string.action_read_money_desc),
-            icon = { iconModifier ->
-                Icon(
-                    imageVector = Icons.Default.AttachMoney,
-                    contentDescription = null,
-                    modifier = iconModifier,
-                )
-            },
+            icon = Icons.Default.AttachMoney,
             onClick = onReadMoneyClick,
         )
 
         BigActionButton(
             label = stringResource(R.string.action_read_menu),
             description = stringResource(R.string.action_read_menu_desc),
-            icon = { iconModifier ->
-                Icon(
-                    imageVector = Icons.Default.MenuBook,
-                    contentDescription = null,
-                    modifier = iconModifier,
-                )
-            },
+            icon = Icons.Default.MenuBook,
             onClick = onReadMenuClick,
+        )
+
+        BigActionButton(
+            label = "Lịch sử",
+            description = "Xem lại các lần quét gần đây",
+            icon = Icons.Default.History,
+            onClick = onHistoryClick,
         )
 
         BigActionButton(
             label = stringResource(R.string.action_settings),
             description = stringResource(R.string.action_settings_desc),
-            icon = { iconModifier ->
-                Icon(
-                    imageVector = Icons.Default.Settings,
-                    contentDescription = null,
-                    modifier = iconModifier,
-                )
-            },
+            icon = Icons.Default.Settings,
             onClick = onSettingsClick,
         )
     }
@@ -114,7 +102,7 @@ fun HomeScreen(
 private fun BigActionButton(
     label: String,
     description: String,
-    icon: @Composable (Modifier) -> Unit,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
     onClick: () -> Unit,
 ) {
     Button(
@@ -128,11 +116,12 @@ private fun BigActionButton(
             contentColor = MaterialTheme.colorScheme.onPrimary,
         ),
     ) {
-        icon(Modifier.size(40.dp))
-        Spacer(Modifier.size(16.dp))
-        Text(
-            text = label,
-            fontSize = 28.sp,
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            modifier = Modifier.size(40.dp),
         )
+        Spacer(Modifier.size(16.dp))
+        Text(text = label, fontSize = 28.sp)
     }
 }
