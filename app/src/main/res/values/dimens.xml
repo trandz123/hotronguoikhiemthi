@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Dimens dung chung. Tat ca touch target ≥ 64dp (vuot WCAG AAA 48dp).
+    Padding lon (24dp+) de nguoi khiem thi nhe de cham.
+-->
+<resources>
+    <!-- Touch target -->
+    <dimen name="touch_target_min">64dp</dimen>
+    <dimen name="big_button_height">96dp</dimen>
+    <dimen name="big_button_icon">40dp</dimen>
+
+    <!-- Spacing -->
+    <dimen name="spacing_xs">4dp</dimen>
+    <dimen name="spacing_sm">8dp</dimen>
+    <dimen name="spacing_md">16dp</dimen>
+    <dimen name="spacing_lg">24dp</dimen>
+    <dimen name="spacing_xl">32dp</dimen>
+
+    <!-- Text size (lon hon mac dinh) -->
+    <dimen name="text_body">18sp</dimen>
+    <dimen name="text_button">28sp</dimen>
+    <dimen name="text_title">24sp</dimen>
+    <dimen name="text_headline">36sp</dimen>
+
+    <!-- Logo -->
+    <dimen name="logo_splash">160dp</dimen>
+</resources>

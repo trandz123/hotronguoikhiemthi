@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    English fallback. Ngon ngu mac dinh la tieng Viet (values/strings.xml).
+    File nay chi dung khi locale he thong la en-* va khong co fallback nao khac.
+-->
+<resources>
+    <string name="app_name">Eye AI</string>
+
+    <string name="home_hint">Swipe to choose a feature, double-tap to open</string>
+
+    <string name="action_read_money">Read money</string>
+    <string name="action_read_money_desc">Open the camera to recognize and read Vietnamese banknotes</string>
+
+    <string name="action_read_menu">Read menu</string>
+    <string name="action_read_menu_desc">Open the camera to recognize and read food menus</string>
+
+    <string name="action_settings">Settings</string>
+    <string name="action_settings_desc">Adjust reading speed, voice and other options</string>
+
+    <string name="welcome_greeting">Welcome to Eye AI. Double-tap to choose a feature.</string>
+    <string name="error_not_recognized">Not recognized, please try again</string>
+    <string name="error_no_text">No text found, please move the camera closer</string>
+
+    <string name="permission_camera_title">Camera permission required</string>
+    <string name="permission_camera_message">The app needs the camera to recognize money and read menus</string>
+    <string name="permission_audio_title">Microphone permission required</string>
+    <string name="permission_audio_message">The microphone is used for voice control</string>
+    <string name="permission_grant">Allow</string>
+    <string name="permission_cancel">Cancel</string>
+</resources>

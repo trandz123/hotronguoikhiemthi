@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Options arrays cho man hinh Settings.
+    - tts_speed_options: 5 muc tu cham den nhanh
+    - tts_voice_options: 2 engine: FPT.AI (giong Bac/Nam) va Android mac dinh
+-->
+<resources>
+    <string-array name="tts_speed_options">
+        <item>Rất chậm</item>
+        <item>Chậm</item>
+        <item>Bình thường</item>
+        <item>Nhanh</item>
+        <item>Rất nhanh</item>
+    </string-array>
+
+    <array name="tts_speed_values">
+        <item>0.6</item>
+        <item>0.8</item>
+        <item>1.0</item>
+        <item>1.3</item>
+        <item>1.6</item>
+    </array>
+
+    <string-array name="tts_voice_options">
+        <item>FPT.AI - Giọng nữ Bắc</item>
+        <item>FPT.AI - Giọng nam Bắc</item>
+        <item>FPT.AI - Giọng nữ Nam</item>
+        <item>Android mặc định</item>
+    </string-array>
+
+    <string-array name="tts_voice_codes">
+        <item>banmai</item>
+        <item>leminh</item>
+        <item>linhsan</item>
+        <item>android_default</item>
+    </string-array>
+
+    <string-array name="contrast_mode_options">
+        <item>Theo hệ thống</item>
+        <item>Luôn nền đen, chữ vàng</item>
+        <item>Luôn nền trắng, chữ đen</item>
+    </string-array>
+</resources>

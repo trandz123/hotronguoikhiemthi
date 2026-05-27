@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Mắt AI</string>
+
+    <!-- Home screen -->
+    <string name="home_hint">Vuốt để chọn chức năng, chạm đôi để mở</string>
+
+    <string name="action_read_money">Đọc tiền</string>
+    <string name="action_read_money_desc">Mở camera để nhận diện và đọc mệnh giá tiền</string>
+
+    <string name="action_read_menu">Đọc menu</string>
+    <string name="action_read_menu_desc">Mở camera để nhận diện và đọc menu đồ ăn</string>
+
+    <string name="action_settings">Cài đặt</string>
+    <string name="action_settings_desc">Chỉnh tốc độ đọc, giọng nói và các tùy chọn khác</string>
+
+    <!-- TTS phrases (preset) -->
+    <string name="welcome_greeting">Chào mừng đến với Mắt AI. Chạm đôi để chọn chức năng.</string>
+    <string name="error_not_recognized">Không nhận diện được, vui lòng thử lại</string>
+    <string name="error_no_text">Không tìm thấy văn bản, vui lòng đưa camera đến gần hơn</string>
+
+    <!-- Permissions -->
+    <string name="permission_camera_title">Cần quyền sử dụng camera</string>
+    <string name="permission_camera_message">Ứng dụng cần camera để nhận diện tiền và đọc menu</string>
+    <string name="permission_audio_title">Cần quyền microphone</string>
+    <string name="permission_audio_message">Microphone dùng cho điều khiển bằng giọng nói</string>
+    <string name="permission_grant">Cho phép</string>
+    <string name="permission_cancel">Hủy</string>
+</resources>

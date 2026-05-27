@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    FileProvider paths. Dung cho share anh chup tu Tab "Doc tien" / "Doc menu"
+    qua intent ACTION_SEND (vd. de gui bao loi co kem screenshot).
+    Khong expose toan bo storage - chi sub-folder rieng.
+-->
+<paths>
+    <cache-path name="captures" path="captures/" />
+    <files-path name="exports" path="exports/" />
+</paths>

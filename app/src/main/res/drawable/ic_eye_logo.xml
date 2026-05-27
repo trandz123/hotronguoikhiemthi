@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Logo dung cho splash, header. Re-use foreground vector. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="120dp"
+    android:height="120dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108"
+    android:tint="?attr/colorPrimary">
+
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,30 C32,30 16,54 16,54 C16,54 32,78 54,78 C76,78 92,54 92,54 C92,54 76,30 54,30 Z M54,38 C62.8,38 70,45.2 70,54 C70,62.8 62.8,70 54,70 C45.2,70 38,62.8 38,54 C38,45.2 45.2,38 54,38 Z" />
+
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,46 C58.4,46 62,49.6 62,54 C62,58.4 58.4,62 54,62 C49.6,62 46,58.4 46,54 C46,49.6 49.6,46 54,46 Z" />
+</vector>
