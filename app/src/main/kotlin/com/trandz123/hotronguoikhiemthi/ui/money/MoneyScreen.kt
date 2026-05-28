@@ -6,15 +6,13 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -23,28 +21,27 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
-import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.compose.foundation.gestures.detectTapGestures
 import com.trandz123.hotronguoikhiemthi.ml.MoneyResult
 import com.trandz123.hotronguoikhiemthi.ui.camera.CameraPreviewView
 import com.trandz123.hotronguoikhiemthi.ui.camera.FrameQualityAnalyzer
 import com.trandz123.hotronguoikhiemthi.ui.camera.captureBitmap
+import com.trandz123.hotronguoikhiemthi.util.hapticStrong
+import com.trandz123.hotronguoikhiemthi.util.hapticTick
 
 @Composable
 fun MoneyScreen(
@@ -66,21 +63,31 @@ fun MoneyScreen(
 
     LaunchedEffect(Unit) {
         if (!hasCameraPermission) permLauncher.launch(Manifest.permission.CAMERA)
+        viewModel.playWelcomeOnce()
     }
 
     if (!hasCameraPermission) {
-        PermissionDeniedView(
-            title = "Cần quyền camera",
-            message = "Vui lòng cấp quyền camera để nhận diện tiền",
-            onBack = onBack,
-            modifier = modifier,
-        )
+        Column(
+            modifier = modifier
+                .fillMaxSize()
+                .background(Color.Black)
+                .padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp, Alignment.CenterVertically),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                "Cần quyền camera để nhận diện tiền",
+                fontSize = 28.sp,
+                color = Color.White,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.semantics { heading() },
+            )
+        }
         return
     }
 
     MoneyContent(
         viewModel = viewModel,
-        onBack = onBack,
         onSwitchMode = onSwitchMode,
         modifier = modifier,
     )
@@ -89,13 +96,11 @@ fun MoneyScreen(
 @Composable
 private fun MoneyContent(
     viewModel: MoneyViewModel,
-    onBack: () -> Unit,
     onSwitchMode: () -> Unit,
     modifier: Modifier,
 ) {
     val context = LocalContext.current
     val state by viewModel.state.collectAsState()
-    val scope = rememberCoroutineScope()
 
     var imageCapture by remember {
         mutableStateOf<androidx.camera.core.ImageCapture?>(null)
@@ -104,6 +109,14 @@ private fun MoneyContent(
 
     LaunchedEffect(Unit) {
         autoCaptureEnabled = viewModel.resolveAutoCapture()
+    }
+
+    // Rung manh khi nhan dien duoc tien.
+    LaunchedEffect(state) {
+        val s = state
+        if (s is MoneyUiState.Result && s.moneyResult is MoneyResult.Recognized) {
+            hapticStrong(context)
+        }
     }
 
     val analyzer = remember(autoCaptureEnabled) {
@@ -118,6 +131,13 @@ private fun MoneyContent(
         )
     }
 
+    val swipeUpToMenu: () -> Unit = remember(onSwitchMode) {
+        {
+            hapticTick(context)
+            onSwitchMode()
+        }
+    }
+
     Box(modifier = modifier.fillMaxSize()) {
         CameraPreviewView(
             modifier = Modifier
@@ -128,8 +148,10 @@ private fun MoneyContent(
                         viewModel.onCapture { ic.captureBitmap(context) }
                     })
                 }
-                .pointerInput(Unit) {
-                    // Swipe gesture: doi mode hoac thoat. Threshold 100px de tranh noise.
+                .pointerInput(swipeUpToMenu) {
+                    // Theo spec UX:
+                    //  - Vuot len   (dy < 0) → ve menu
+                    //  - Vuot xuong (dy > 0) → reset quet lai
                     var dx = 0f
                     var dy = 0f
                     detectDragGestures(
@@ -140,10 +162,10 @@ private fun MoneyContent(
                             when {
                                 absX < 100f && absY < 100f -> Unit
                                 absY > absX -> {
-                                    if (dy < 0) onSwitchMode()  // vuot len → menu
-                                    else onBack()                // vuot xuong → home
+                                    if (dy < 0) swipeUpToMenu()
+                                    else viewModel.scanAgain()
                                 }
-                                else -> Unit  // ignore swipe ngang
+                                else -> Unit
                             }
                         },
                         onDrag = { _, drag -> dx += drag.x; dy += drag.y },
@@ -153,7 +175,6 @@ private fun MoneyContent(
             onCameraReady = { ic -> imageCapture = ic },
         )
 
-        // Overlay status: bottom area, semi-transparent dark cho do contrast
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -161,105 +182,34 @@ private fun MoneyContent(
                 .background(Color.Black.copy(alpha = 0.7f))
                 .padding(horizontal = 24.dp, vertical = 32.dp)
                 .semantics { liveRegion = LiveRegionMode.Polite },
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
-                text = "Đọc tiền",
+                text = "Chế độ nhận diện tiền",
                 fontSize = 28.sp,
                 color = Color.White,
                 modifier = Modifier.semantics { heading() },
             )
-
             Text(
-                text = statusText(state, autoCaptureEnabled),
-                fontSize = 20.sp,
+                text = statusText(state),
+                fontSize = 22.sp,
                 color = MaterialTheme.colorScheme.primary,
                 textAlign = TextAlign.Center,
             )
-
-            when (val s = state) {
-                is MoneyUiState.Result -> {
-                    Button(
-                        onClick = { viewModel.scanAgain() },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(80.dp)
-                            .semantics { contentDescription = "Quét tờ tiền tiếp theo" },
-                    ) {
-                        Text("Quét tiếp", fontSize = 22.sp)
-                    }
-                    Button(
-                        onClick = { viewModel.repeatLast() },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(80.dp)
-                            .semantics { contentDescription = "Đọc lại kết quả vừa rồi" },
-                    ) {
-                        Text("Đọc lại", fontSize = 22.sp)
-                    }
-                    Unit
-                }
-                else -> Unit
-            }
-
-            Button(
-                onClick = onBack,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(64.dp)
-                    .semantics { contentDescription = "Quay lại trang chính" },
-            ) {
-                Text("← Quay lại", fontSize = 20.sp)
-            }
+            Text(
+                "Vuốt lên để chuyển sang đọc menu. Vuốt xuống để quét lại.",
+                fontSize = 16.sp,
+                color = Color.White.copy(alpha = 0.85f),
+                textAlign = TextAlign.Center,
+            )
         }
     }
 }
 
-private fun statusText(state: MoneyUiState, autoCapture: Boolean): String = when (state) {
-    is MoneyUiState.Analyzing -> if (autoCapture) {
-        "Đang tìm tờ tiền — đưa camera lại gần"
-    } else {
-        "Chạm đôi để chụp"
-    }
+private fun statusText(state: MoneyUiState): String = when (state) {
+    is MoneyUiState.Analyzing -> "Đang tìm tờ tiền..."
     MoneyUiState.Capturing -> "Đang chụp..."
     MoneyUiState.Classifying -> "Đang nhận diện..."
     is MoneyUiState.Result -> state.spokenText
-}
-
-@Composable
-private fun PermissionDeniedView(
-    title: String,
-    message: String,
-    onBack: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp, Alignment.CenterVertically),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(
-            title,
-            fontSize = 28.sp,
-            color = MaterialTheme.colorScheme.onBackground,
-            modifier = Modifier.semantics { heading() },
-        )
-        Text(
-            message,
-            fontSize = 18.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-        )
-        Button(
-            onClick = onBack,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(80.dp),
-        ) {
-            Text("Quay lại", fontSize = 22.sp)
-        }
-    }
 }

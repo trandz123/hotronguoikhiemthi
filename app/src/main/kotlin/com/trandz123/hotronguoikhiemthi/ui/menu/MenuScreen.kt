@@ -10,12 +10,9 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -31,7 +28,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.LiveRegionMode
-import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
@@ -42,6 +38,7 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.trandz123.hotronguoikhiemthi.ui.camera.CameraPreviewView
 import com.trandz123.hotronguoikhiemthi.ui.camera.captureBitmap
+import com.trandz123.hotronguoikhiemthi.util.hapticTick
 
 @Composable
 fun MenuScreen(
@@ -63,34 +60,25 @@ fun MenuScreen(
 
     LaunchedEffect(Unit) {
         if (!hasCameraPermission) permLauncher.launch(Manifest.permission.CAMERA)
+        viewModel.playWelcomeOnce()
     }
 
     if (!hasCameraPermission) {
         Column(
             modifier = modifier
                 .fillMaxSize()
+                .background(Color.Black)
                 .padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp, Alignment.CenterVertically),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
-                "Cần quyền camera",
+                "Cần quyền camera để đọc menu",
                 fontSize = 28.sp,
-                color = MaterialTheme.colorScheme.onBackground,
+                color = Color.White,
+                textAlign = TextAlign.Center,
                 modifier = Modifier.semantics { heading() },
             )
-            Text(
-                "Vui lòng cấp quyền camera để đọc menu",
-                fontSize = 18.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-            )
-            Button(
-                onClick = onBack,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(80.dp),
-            ) { Text("Quay lại", fontSize = 22.sp) }
         }
         return
     }
@@ -112,19 +100,35 @@ private fun MenuContent(
         mutableStateOf<androidx.camera.core.ImageCapture?>(null)
     }
 
+    // Trigger countdown khi camera san sang va state == Idle.
+    LaunchedEffect(state, imageCapture) {
+        if (state is MenuUiState.Idle && imageCapture != null) {
+            val ic = imageCapture!!
+            viewModel.startCountdown { ic.captureBitmap(context) }
+        }
+    }
+
+    // Tu dong scan lai sau khi error message duoc phat — cho user co the vuot len.
+    // Khong auto reset; user vuot len -> scanAgain().
+
+    val swipeDownToMoney: () -> Unit = remember(onSwitchMode) {
+        {
+            hapticTick(context)
+            onSwitchMode()
+        }
+    }
+
     Box(modifier = modifier.fillMaxSize()) {
-        // Khi chua co Loaded → hien camera. Loaded → hien danh sach va dieu khien swipe.
+        // Camera + status overlay luon hien khi chua co Loaded (hoac dang Reading).
         when (state) {
-            is MenuUiState.Loaded, is MenuUiState.Reading -> {
+            is MenuUiState.Loaded -> {
                 LoadedView(
                     state = state,
                     onSwipeNext = { viewModel.nextItem() },
                     onSwipePrev = { viewModel.prevItem() },
-                    onSwipeUp = { viewModel.repeatCurrent() },
-                    onSwipeDown = { viewModel.stopReading() },
+                    onSwipeUp = { viewModel.scanAgain() }, // re-scan menu
+                    onSwipeDown = { swipeDownToMoney() }, // sang tien
                     onDoubleTap = { viewModel.readAll() },
-                    onScanAgain = { viewModel.scanAgain() },
-                    onBack = onBack,
                 )
             }
             else -> {
@@ -137,8 +141,10 @@ private fun MenuContent(
                                 viewModel.onCapture { ic.captureBitmap(context) }
                             })
                         }
-                        .pointerInput(Unit) {
-                            // Swipe len → doi sang doc tien. Swipe xuong → ve home.
+                        .pointerInput(swipeDownToMoney) {
+                            // Theo spec UX:
+                            //  - Vuot xuong (dy > 0) → chuyen sang doc tien
+                            //  - Vuot len   (dy < 0) → chup lai menu (scanAgain → Idle → countdown)
                             var dx = 0f
                             var dy = 0f
                             detectDragGestures(
@@ -149,8 +155,8 @@ private fun MenuContent(
                                     when {
                                         absX < 100f && absY < 100f -> Unit
                                         absY > absX -> {
-                                            if (dy < 0) onSwitchMode()  // vuot len → money
-                                            else onBack()                // vuot xuong → home
+                                            if (dy > 0) swipeDownToMoney()
+                                            else viewModel.scanAgain()
                                         }
                                         else -> Unit
                                     }
@@ -168,28 +174,27 @@ private fun MenuContent(
                         .background(Color.Black.copy(alpha = 0.7f))
                         .padding(horizontal = 24.dp, vertical = 32.dp)
                         .semantics { liveRegion = LiveRegionMode.Polite },
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Text(
-                        "Đọc menu",
+                        "Chế độ đọc menu",
                         fontSize = 28.sp,
                         color = Color.White,
                         modifier = Modifier.semantics { heading() },
                     )
                     Text(
                         statusText(state),
-                        fontSize = 20.sp,
+                        fontSize = 22.sp,
                         color = MaterialTheme.colorScheme.primary,
                         textAlign = TextAlign.Center,
                     )
-                    Button(
-                        onClick = onBack,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(64.dp)
-                            .semantics { contentDescription = "Quay lại trang chính" },
-                    ) { Text("← Quay lại", fontSize = 20.sp) }
+                    Text(
+                        "Vuốt xuống để chuyển sang đọc tiền. Vuốt lên để chụp lại.",
+                        fontSize = 16.sp,
+                        color = Color.White.copy(alpha = 0.85f),
+                        textAlign = TextAlign.Center,
+                    )
                 }
             }
         }
@@ -204,31 +209,20 @@ private fun LoadedView(
     onSwipeUp: () -> Unit,
     onSwipeDown: () -> Unit,
     onDoubleTap: () -> Unit,
-    onScanAgain: () -> Unit,
-    onBack: () -> Unit,
 ) {
-    val items = when (state) {
-        is MenuUiState.Loaded -> state.items
-        is MenuUiState.Reading -> state.items
-        else -> emptyList()
-    }
-    val currentIndex = when (state) {
-        is MenuUiState.Loaded -> state.currentIndex
-        is MenuUiState.Reading -> state.currentIndex
-        else -> 0
-    }
+    val loaded = state as? MenuUiState.Loaded ?: return
+    val items = loaded.items
+    val currentIndex = loaded.currentIndex
     val current = items.getOrNull(currentIndex)
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(Color.Black)
             .pointerInput(Unit) {
                 detectTapGestures(onDoubleTap = { onDoubleTap() })
             }
             .pointerInput(Unit) {
-                // 1 drag detector chung: accumulate dx, dy → cuoi drag dieu huong theo
-                // truc co bien thien lon nhat (tranh xung dot voi tap detector).
                 var dx = 0f
                 var dy = 0f
                 detectDragGestures(
@@ -237,7 +231,7 @@ private fun LoadedView(
                         val absX = kotlin.math.abs(dx)
                         val absY = kotlin.math.abs(dy)
                         when {
-                            absX < 80f && absY < 80f -> Unit  // mini drag → ignore
+                            absX < 80f && absY < 80f -> Unit
                             absX > absY -> if (dx > 0) onSwipeNext() else onSwipePrev()
                             else -> if (dy < 0) onSwipeUp() else onSwipeDown()
                         }
@@ -252,44 +246,38 @@ private fun LoadedView(
     ) {
         Text(
             "Đọc menu",
-            fontSize = 28.sp,
-            color = MaterialTheme.colorScheme.onBackground,
+            fontSize = 32.sp,
+            color = Color.White,
             modifier = Modifier.semantics { heading() },
         )
         Text(
             "Món ${currentIndex + 1}/${items.size}",
-            fontSize = 20.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 22.sp,
+            color = Color.White.copy(alpha = 0.8f),
         )
         Text(
             current?.let { it.name + (it.priceVnd?.let { p -> " — ${formatVnd(p)} đồng" } ?: "") } ?: "",
-            fontSize = 28.sp,
-            color = MaterialTheme.colorScheme.onBackground,
+            fontSize = 32.sp,
+            color = Color.Yellow,
             textAlign = TextAlign.Center,
         )
         Text(
-            "Vuốt phải → tiếp, ← lùi, ↑ đọc lại, ↓ dừng. Chạm đôi để đọc toàn bộ.",
-            fontSize = 14.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            "Vuốt phải sang món tiếp, vuốt trái lùi, vuốt lên chụp lại menu, vuốt xuống sang đọc tiền.",
+            fontSize = 16.sp,
+            color = Color.White.copy(alpha = 0.7f),
             textAlign = TextAlign.Center,
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Button(onClick = onScanAgain, modifier = Modifier.height(72.dp)) {
-                Text("Quét lại", fontSize = 20.sp)
-            }
-            Button(onClick = onBack, modifier = Modifier.height(72.dp)) {
-                Text("Quay lại", fontSize = 20.sp)
-            }
-        }
     }
 }
 
 private fun statusText(state: MenuUiState): String = when (state) {
-    MenuUiState.Idle -> "Chạm đôi để chụp menu"
+    MenuUiState.Idle -> "Sẵn sàng..."
+    is MenuUiState.CountingDown -> "Lấy nét... ${state.secondsLeft.coerceAtLeast(0)}"
     MenuUiState.Capturing -> "Đang chụp..."
     MenuUiState.Processing -> "Đang phân tích menu..."
-    is MenuUiState.Loaded -> "Đã có ${state.items.size} mục"
+    is MenuUiState.Loaded -> "Đã có ${state.items.size} món"
     is MenuUiState.Reading -> "Đang đọc..."
+    is MenuUiState.Error -> "Lỗi: ${state.message}"
 }
 
 private fun formatVnd(amount: Long): String {

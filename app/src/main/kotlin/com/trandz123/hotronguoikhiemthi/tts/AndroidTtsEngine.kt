@@ -39,27 +39,44 @@ class AndroidTtsEngine(context: Context) : TtsManager {
     private var tts: TextToSpeech? = null
 
     @Volatile
-    private var rate: Float = 1.0f
+    private var rate: Float = DEFAULT_RATE
 
     init {
-        tts = TextToSpeech(appContext) { status ->
+        // Uu tien ep engine Google TTS (com.google.android.tts) — giong tieng Viet tu nhien.
+        // Neu device khong co Google TTS, constructor fallback engine mac dinh he thong.
+        val listener = TextToSpeech.OnInitListener { status ->
             if (status == TextToSpeech.SUCCESS) {
-                val engine = tts ?: return@TextToSpeech
-                val result = engine.setLanguage(Locale("vi", "VN"))
-                if (result == TextToSpeech.LANG_MISSING_DATA ||
-                    result == TextToSpeech.LANG_NOT_SUPPORTED
-                ) {
-                    Log.w(TAG, "Vietnamese TTS not available, fallback to default locale")
-                    engine.setLanguage(Locale.getDefault())
-                }
-                engine.setSpeechRate(rate)
-                engine.setOnUtteranceProgressListener(progressListener)
-                _state.value = TtsState.Ready
+                configureEngine()
             } else {
-                Log.e(TAG, "TTS init failed with status=$status")
-                _state.value = TtsState.Error
+                Log.w(TAG, "Google TTS init failed status=$status, fallback default engine")
+                tts?.shutdown()
+                tts = TextToSpeech(appContext) { fallbackStatus ->
+                    if (fallbackStatus == TextToSpeech.SUCCESS) {
+                        configureEngine()
+                    } else {
+                        Log.e(TAG, "Default TTS engine also failed status=$fallbackStatus")
+                        _state.value = TtsState.Error
+                    }
+                }
             }
         }
+        tts = TextToSpeech(appContext, listener, GOOGLE_TTS_PACKAGE)
+    }
+
+    /** Cau hinh chung sau khi engine init: locale vi-VN, rate 0.9, pitch 1.0. */
+    private fun configureEngine() {
+        val engine = tts ?: return
+        val result = engine.setLanguage(Locale("vi", "VN"))
+        if (result == TextToSpeech.LANG_MISSING_DATA ||
+            result == TextToSpeech.LANG_NOT_SUPPORTED
+        ) {
+            Log.w(TAG, "Vietnamese TTS not available, fallback to default locale")
+            engine.setLanguage(Locale.getDefault())
+        }
+        engine.setSpeechRate(rate)
+        engine.setPitch(DEFAULT_PITCH)
+        engine.setOnUtteranceProgressListener(progressListener)
+        _state.value = TtsState.Ready
     }
 
     private val progressListener = object : UtteranceProgressListener() {
@@ -142,5 +159,8 @@ class AndroidTtsEngine(context: Context) : TtsManager {
 
     private companion object {
         const val TAG = "AndroidTtsEngine"
+        const val GOOGLE_TTS_PACKAGE = "com.google.android.tts"
+        const val DEFAULT_RATE = 0.9f
+        const val DEFAULT_PITCH = 1.0f
     }
 }

@@ -2,9 +2,11 @@ package com.trandz123.hotronguoikhiemthi.ui.camera
 
 import android.content.Context
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.FocusMeteringAction
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.Preview
+import androidx.camera.core.SurfaceOrientedMeteringPointFactory
 import androidx.camera.core.UseCase
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
@@ -66,11 +68,20 @@ fun CameraPreviewView(
             useCases += analysis
         }
 
-        provider.bindToLifecycle(
+        val camera = provider.bindToLifecycle(
             lifecycleOwner,
             CameraSelector.DEFAULT_BACK_CAMERA,
             *useCases.toTypedArray(),
         )
+        // Bat tu dong lay net lien tuc o trung tam — phuc vu menu/tien.
+        runCatching {
+            val factory = SurfaceOrientedMeteringPointFactory(1f, 1f)
+            val centerPoint = factory.createPoint(0.5f, 0.5f)
+            val action = FocusMeteringAction.Builder(centerPoint, FocusMeteringAction.FLAG_AF)
+                .disableAutoCancel()
+                .build()
+            camera.cameraControl.startFocusAndMetering(action)
+        }
         onCameraReady(imageCapture)
     }
 

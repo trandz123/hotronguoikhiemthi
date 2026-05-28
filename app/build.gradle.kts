@@ -14,6 +14,7 @@ val localProps = Properties().apply {
     if (f.exists()) f.inputStream().use { load(it) }
 }
 val fptTtsKey: String = localProps.getProperty("fpt.tts.api.key", "")
+val geminiApiKey: String = localProps.getProperty("gemini.api.key", "")
 
 android {
     namespace = "com.trandz123.hotronguoikhiemthi"
@@ -23,8 +24,8 @@ android {
         applicationId = "com.trandz123.hotronguoikhiemthi"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 4
+        versionName = "0.4.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
@@ -32,6 +33,7 @@ android {
         // BuildConfig.FPT_TTS_API_KEY = chuoi rong neu user chua dat key.
         // Engine FPT se tu fallback sang Android TTS khi key trong.
         buildConfigField("String", "FPT_TTS_API_KEY", "\"$fptTtsKey\"")
+        buildConfigField("String", "GEMINI_API_KEY", "\"$geminiApiKey\"")
     }
 
     buildTypes {

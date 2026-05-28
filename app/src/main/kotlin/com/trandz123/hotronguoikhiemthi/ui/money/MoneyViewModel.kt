@@ -11,6 +11,8 @@ import com.trandz123.hotronguoikhiemthi.ml.MoneyResult
 import com.trandz123.hotronguoikhiemthi.tts.TtsManager
 import com.trandz123.hotronguoikhiemthi.util.toVietnameseMoney
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -29,10 +31,28 @@ class MoneyViewModel @Inject constructor(
     private val _state = MutableStateFlow<MoneyUiState>(MoneyUiState.Analyzing(0.0, 0.0))
     val state: StateFlow<MoneyUiState> = _state.asStateFlow()
 
+    private var idleReminderJob: Job? = null
+    private var cooldownJob: Job? = null
+    private var welcomeAnnounced = false
+
+    /** Welcome khi vao MoneyScreen. */
+    fun playWelcomeOnce() {
+        if (welcomeAnnounced) return
+        welcomeAnnounced = true
+        viewModelScope.launch {
+            tts.speak(WELCOME_MONEY)
+            startIdleReminder()
+        }
+    }
+
     fun onFrameQuality(brightness: Double, sharpness: Double) {
         val s = _state.value
         if (s is MoneyUiState.Analyzing) {
             _state.value = MoneyUiState.Analyzing(brightness, sharpness)
+            // Frame quality update — reset idle reminder timer khi co frame sang/sharp.
+            if (brightness > 60.0 && sharpness > 60.0) {
+                startIdleReminder()
+            }
         }
     }
 
@@ -42,40 +62,71 @@ class MoneyViewModel @Inject constructor(
      */
     fun onCapture(bitmapProvider: suspend () -> Bitmap) {
         if (_state.value !is MoneyUiState.Analyzing) return
+        idleReminderJob?.cancel()
         _state.value = MoneyUiState.Capturing
         viewModelScope.launch {
             val bitmap = runCatching { bitmapProvider() }.getOrNull()
             if (bitmap == null) {
-                speakError("Không chụp được, vui lòng thử lại")
+                speakError("Không chụp được, vui lòng thử lại.")
                 _state.value = MoneyUiState.Analyzing(0.0, 0.0)
+                startIdleReminder()
                 return@launch
             }
             _state.value = MoneyUiState.Classifying
             val result = classifier.classify(bitmap)
-            val spoken = when (result) {
-                is MoneyResult.Recognized -> result.denominationVnd.toVietnameseMoney()
-                MoneyResult.Unknown -> "Không nhận diện được, vui lòng thử lại"
+            val recognized = (result as? MoneyResult.Recognized)
+                ?.takeIf { it.confidence >= STRICT_CONFIDENCE }
+            val spoken = if (recognized != null) {
+                recognized.denominationVnd.toVietnameseMoney()
+            } else {
+                "Không nhận diện được, vui lòng thử lại."
             }
             _state.value = MoneyUiState.Result(result, spoken)
             tts.speak(spoken)
-            if (result is MoneyResult.Recognized) {
+            if (recognized != null) {
                 historyRepo.record(ScanType.MONEY, spoken)
+                // Cooldown 3s sau khi nhan dien — tranh doc lap lai cung 1 to tien.
+                startCooldown()
+            } else {
+                // Khong nhan duoc → reset ngay ve Analyzing de quet lai.
+                delay(500L)
+                _state.value = MoneyUiState.Analyzing(0.0, 0.0)
+                startIdleReminder()
             }
         }
     }
 
-    fun isAutoCaptureEnabled(): Boolean = runCatching {
-        // Sync read fallback — neu coroutine chua start: tra true (default ON
-        // cho money screen vi user khiem thi can hands-free).
-        true
-    }.getOrDefault(true)
+    private fun startCooldown() {
+        cooldownJob?.cancel()
+        cooldownJob = viewModelScope.launch {
+            delay(COOLDOWN_MS)
+            _state.value = MoneyUiState.Analyzing(0.0, 0.0)
+            startIdleReminder()
+        }
+    }
+
+    /**
+     * Sau IDLE_REMINDER_MS giay khong co frame chat luong on dinh → nhac nhu cau.
+     */
+    private fun startIdleReminder() {
+        idleReminderJob?.cancel()
+        idleReminderJob = viewModelScope.launch {
+            delay(IDLE_REMINDER_MS)
+            if (_state.value is MoneyUiState.Analyzing) {
+                tts.speak("Không tìm thấy tiền, hãy đưa tờ tiền vào giữa camera.")
+                // Khong loop — chi nhac mot lan, doi user di chuyen camera (frame quality update se reset).
+            }
+        }
+    }
 
     /**
      * Quay lai trang thai Analyzing (sau khi nguoi dung muon quet tiep).
      */
     fun scanAgain() {
+        cooldownJob?.cancel()
         tts.stop()
         _state.value = MoneyUiState.Analyzing(0.0, 0.0)
+        startIdleReminder()
     }
 
     /** Doc lai noi dung cuoi cung. */
@@ -92,6 +143,21 @@ class MoneyViewModel @Inject constructor(
 
     /** Doc setting auto-capture mot lan luc bat dau (suspend). */
     suspend fun resolveAutoCapture(): Boolean = prefsRepo.flow.first().autoCaptureEnabled
+
+    override fun onCleared() {
+        super.onCleared()
+        idleReminderJob?.cancel()
+        cooldownJob?.cancel()
+    }
+
+    private companion object {
+        const val WELCOME_MONEY =
+            "Đang chuyển sang chế độ nhận diện tiền Việt Nam."
+        const val COOLDOWN_MS = 3_000L
+        const val IDLE_REMINDER_MS = 5_000L
+        /** Threshold strict cho UI — vuot qua nguong nay moi coi la "nhan duoc". */
+        const val STRICT_CONFIDENCE = 0.75f
+    }
 }
 
 sealed class MoneyUiState {

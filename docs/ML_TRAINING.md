@@ -1,8 +1,28 @@
 # Hướng dẫn ML training & eval
 
+> **v0.4 — Kiến trúc đã đổi:**
+> - **Menu** không còn dùng ML Kit OCR + parser. Thay vào đó gọi thẳng **Gemini 1.5 Flash API** (VLM cloud) với prompt structured JSON. Notebook 02 (eval parser) giờ chỉ có giá trị tham khảo.
+> - **Money** vẫn TFLite classifier (Kaggle dataset) cho v0.3, sẽ swap sang **YOLOv10n detection** (Roboflow dataset bao gồm tiền gấp/vò/che) ở v0.4. Code app gọi `MoneyClassifier` interface → có thể swap không phá đổ.
+
+## ⚙️ Cấu hình `local.properties`
+
+Tạo/cập nhật `D:\hotronguoikhiemthi\local.properties` (gitignored):
+
+```properties
+# Gemini API key — lấy ở https://aistudio.google.com/apikey
+gemini.api.key=AIzaSy...your_real_key
+
+# (optional) FPT.AI TTS — đã có sẵn
+fpt.tts.api.key=
+```
+
+Nếu `gemini.api.key` trống, MenuScreen sẽ TTS "Lỗi mạng" khi user thử chụp menu (vì API call fail ngay).
+
+---
+
 Folder `ml-training/` chứa 2 notebook Colab để:
 1. **Train model nhận diện tiền** (`vnd_classifier.tflite`) từ dataset Kaggle.
-2. **Eval parser menu** trên dataset Viet-Menu để đo accuracy + tìm case sai.
+2. **(Deprecated)** Eval parser menu — giữ làm tham khảo, không còn dùng trong production app.
 
 Cả 2 notebook chạy trên Google Colab free (GPU T4 cho notebook 01).
 
