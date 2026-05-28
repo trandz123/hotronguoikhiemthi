@@ -1,7 +1,7 @@
 # Hướng dẫn ML training & eval
 
 Folder `ml-training/` chứa 2 notebook Colab để:
-1. **Train model nhận diện tiền** (`vnd_classifier.tflite`) từ dataset Roboflow.
+1. **Train model nhận diện tiền** (`vnd_classifier.tflite`) từ dataset Kaggle.
 2. **Eval parser menu** trên dataset Viet-Menu để đo accuracy + tìm case sai.
 
 Cả 2 notebook chạy trên Google Colab free (GPU T4 cho notebook 01).
@@ -11,26 +11,24 @@ Cả 2 notebook chạy trên Google Colab free (GPU T4 cho notebook 01).
 ## 📦 Notebook 01 — Train money classifier
 
 **File:** `ml-training/notebooks/01_money_train.ipynb`
-**Dataset:** [Vietnamese Currency Detector (Roboflow Universe)](https://universe.roboflow.com/cv-aal82/vietnamese-currency-detector) — 2569 ảnh
-**Output:** `vnd_classifier.tflite` (~5 MB INT8) + `vnd_labels.txt`
+**Dataset:** [Vietnamese currency - 11 mệnh giá tiền Việt Nam (Kaggle)](https://www.kaggle.com/datasets/nguyentrongdai/vietnamese-currency) — ~2750 ảnh (sau khi bỏ 200đ/500đ còn ~2250)
+**Output:** `vnd_classifier.tflite` (~5 MB FP32) + `vnd_labels.txt`
 
 ### Bước thực hiện
 
-1. **Đăng ký Roboflow** (free) tại https://app.roboflow.com → Settings → API Keys → copy "Private API Key"
+1. **Đăng ký Kaggle** (free) tại https://www.kaggle.com → Settings → API → **Create New Token** → tải `kaggle.json`
 
 2. **Mở notebook trên Colab:**
    - Vào https://colab.research.google.com
    - File → Upload notebook → chọn `01_money_train.ipynb`
    - Runtime → Change runtime type → **T4 GPU** (Free tier có)
 
-3. **Paste API key:** cell #4, sửa dòng:
-   ```python
-   ROBOFLOW_API_KEY = 'YOUR_API_KEY_HERE'  # ← paste vào đây
-   ```
+3. **Upload `kaggle.json`:** trong Colab, bấm icon Files ở sidebar trái → Upload to session storage → chọn `kaggle.json` (cell #2 sẽ tự copy vào `/root/.kaggle/`).
 
-4. **Verify class mapping** (cell #5):
-   - Cell sẽ in ra Roboflow class names + mapping sang VND
-   - Kiểm tra bằng mắt, nếu Roboflow đặt tên class lạ (vd `bill_500k` thay vì `500000`) → sửa hàm `roboflow_name_to_vnd`
+4. **Verify class mapping** (cell #4):
+   - Cell sẽ in ra Kaggle class names + mapping sang VND
+   - 200đ và 500đ sẽ bị đánh dấu `← DROP` (đã skip)
+   - Nếu tên class lạ (vd `bill_500k`) → sửa hàm `class_name_to_vnd`
 
 5. **Runtime → Run all** → đợi ~30-60 phút (chủ yếu là 30 epoch training)
 
@@ -59,8 +57,8 @@ Cả 2 notebook chạy trên Google Colab free (GPU T4 cho notebook 01).
 - Inference time **< 200 ms** trên Snapdragon 6-series
 
 Nếu val_acc < 80% → check:
-- Roboflow class name mapping (cell #5) có sai class nào không
-- Số sample per class có cân không (cell #6 print count)
+- Kaggle class name mapping (cell #4) có sai class nào không
+- Số sample per class có cân không (cell #5 print count)
 - Augmentation có quá mạnh không
 
 ### Class order quan trọng
@@ -137,9 +135,10 @@ Khi sửa parser logic:
 
 ### Notebook 01
 
-- **Dataset Roboflow chỉ có ảnh tiền** → class `unknown` được tăng bằng CIFAR-10 (objects ngẫu nhiên). Real-world có thể vẫn confuse với đồ vật phẳng/giấy.
+- **Dataset Kaggle chỉ có ảnh tiền** → class `unknown` được tăng bằng CIFAR-10 (objects ngẫu nhiên). Real-world có thể vẫn confuse với đồ vật phẳng/giấy.
+- **Bỏ 200đ + 500đ** theo yêu cầu — model sẽ không nhận diện 2 mệnh giá này (rất hiếm dùng trong thực tế).
 - **Inference time chưa benchmark trên thiết bị thật.** Sau khi drop file vào app, dùng `adb logcat` đo thời gian từ `classify()` start → return.
-- **INT8 quantization** đôi khi fail nếu model dùng op không support → fallback FP32 (~5-6 MB thay vì ~1.5 MB).
+- **TFLite FP32** mặc định (~5-6 MB). Muốn INT8 nhỏ hơn (~1.5 MB): chạy `onnx2tf -i model.onnx -o out -oiqd` ở cell export.
 
 ### Notebook 02
 
