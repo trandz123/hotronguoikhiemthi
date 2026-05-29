@@ -34,10 +34,8 @@ class MainViewModel @Inject constructor(
         if (welcomeSpoken) return
         welcomeSpoken = true
         viewModelScope.launch {
-            // Apply rate hien tai truoc khi noi
             val prefs = prefsRepo.flow.first()
             tts.setRate(prefs.ttsRate)
-            tts.speak(WELCOME_TEXT)
         }
     }
 

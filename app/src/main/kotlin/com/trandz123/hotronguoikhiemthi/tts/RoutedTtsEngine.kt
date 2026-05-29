@@ -50,14 +50,16 @@ class RoutedTtsEngine(
 
     override suspend fun speak(text: String) {
         val voice = prefsRepo.flow.first().ttsVoice
-        val useFpt = voice.usesFpt && fpt.isAvailable && isOnline()
-        if (useFpt) {
-            // Truyen voice code cu the qua FptTtsEngine — caller co the tao instance moi
-            // theo voice. O day don gian: dung default voice code (banmai). Doi sau.
-            fpt.speak(text)
-            if (fpt.state.value != TtsState.Error) return
-            // Else fall through to Android
+        // Co API key + voice settings cho phep FPT → LUON dung FPT, KHONG fallback Android
+        // (Android TTS tren Vivo doc English giong English chu Viet → te). Neu FPT fail
+        // (offline / quota / server down) → im lang con hon doc sai.
+        if (voice.usesFpt && fpt.isAvailable) {
+            if (isOnline()) {
+                fpt.speak(text)
+            }
+            return
         }
+        // Chi reach day khi user khong co API key → fallback Android (dev-only path)
         android.speak(text)
     }
 

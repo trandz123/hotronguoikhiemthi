@@ -4,7 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.trandz123.hotronguoikhiemthi.BuildConfig
 import com.trandz123.hotronguoikhiemthi.ml.FakeMoneyClassifier
-import com.trandz123.hotronguoikhiemthi.ml.GeminiMenuAnalyzer
+import com.trandz123.hotronguoikhiemthi.ml.GroqMenuAnalyzer
 import com.trandz123.hotronguoikhiemthi.ml.MoneyClassifier
 import com.trandz123.hotronguoikhiemthi.ml.TfliteMoneyClassifier
 import com.trandz123.hotronguoikhiemthi.ml.Yolov10MoneyDetector
@@ -41,12 +41,13 @@ object MlModule {
     }
 
     /**
-     * GeminiMenuAnalyzer doc menu qua VLM cloud (Gemini 1.5 Flash).
-     * Key load tu local.properties → BuildConfig.GEMINI_API_KEY. Neu rong, [isConfigured]=false
+     * GroqMenuAnalyzer parse OCR text qua Llama 3.3 70B (Groq Cloud).
+     * Free tier 14k req/ngay, toc do 200-500ms.
+     * Key load tu local.properties → BuildConfig.GROQ_API_KEY. Neu rong, [isConfigured]=false
      * va MenuViewModel se TTS thong bao chua cau hinh.
      */
     @Provides
     @Singleton
-    fun provideGeminiMenuAnalyzer(): GeminiMenuAnalyzer =
-        GeminiMenuAnalyzer(BuildConfig.GEMINI_API_KEY)
+    fun provideGroqMenuAnalyzer(): GroqMenuAnalyzer =
+        GroqMenuAnalyzer(BuildConfig.GROQ_API_KEY)
 }

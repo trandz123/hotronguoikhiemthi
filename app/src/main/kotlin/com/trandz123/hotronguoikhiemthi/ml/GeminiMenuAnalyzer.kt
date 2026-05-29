@@ -1,39 +1,58 @@
 package com.trandz123.hotronguoikhiemthi.ml
 
-import android.graphics.Bitmap
-import android.util.Base64
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
-import java.io.ByteArrayOutputStream
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
 
+/**
+ * Goi Gemini 1.5 Flash API de PARSE raw text OCR thanh danh sach mon + gia.
+ *
+ * Pipeline (v0.5):
+ *   Bitmap -> ML Kit OCR (on-device) -> raw text -> Gemini Flash -> JSON {items}
+ *
+ * KHONG gui anh len cloud: tiet kiem bandwidth + bao mat hon + chi phi token thap hon.
+ */
 class GeminiMenuAnalyzer(private val apiKey: String) {
 
     val isConfigured: Boolean get() = apiKey.isNotBlank()
 
-    suspend fun analyze(bitmap: Bitmap): List<MenuItem> = withContext(Dispatchers.IO) {
+    suspend fun parseMenuText(rawText: String): List<MenuItem> = withContext(Dispatchers.IO) {
         if (apiKey.isBlank()) throw IllegalStateException("Gemini API key not configured")
+        if (rawText.isBlank()) return@withContext emptyList()
 
-        val base64 = bitmap.toBase64Jpeg(JPEG_QUALITY)
-        val body = buildRequestBody(base64)
-        val responseJson = postJson(body)
-        parseItems(responseJson)
+        val body = buildRequestBody(rawText)
+        // Retry 3 lan voi backoff 2s -> 4s -> 8s khi gap 429/503 (rate limit / overload).
+        var attempt = 0
+        var lastError: GeminiException? = null
+        while (attempt < MAX_RETRIES) {
+            try {
+                val responseJson = postJson(body)
+                return@withContext parseItems(responseJson)
+            } catch (e: GeminiException) {
+                lastError = e
+                val msg = e.message.orEmpty()
+                val transient = msg.contains("429") || msg.contains("503") || msg.contains("RESOURCE_EXHAUSTED")
+                if (!transient || attempt == MAX_RETRIES - 1) throw e
+                val backoffMs = 2_000L shl attempt
+                Log.w(TAG, "Transient error '$msg', retry attempt ${attempt + 1} after ${backoffMs}ms")
+                delay(backoffMs)
+                attempt++
+            }
+        }
+        throw lastError ?: GeminiException("Unknown error after retries")
     }
 
-    private fun buildRequestBody(base64Jpeg: String): String {
-        val inlineData = JSONObject()
-            .put("mime_type", "image/jpeg")
-            .put("data", base64Jpeg)
-        val parts = JSONArray()
-            .put(JSONObject().put("text", PROMPT))
-            .put(JSONObject().put("inline_data", inlineData))
+    private fun buildRequestBody(rawText: String): String {
+        val fullPrompt = PROMPT_TEMPLATE + "\n\nRAW_TEXT:\n<<<\n" + rawText + "\n>>>"
+        val parts = JSONArray().put(JSONObject().put("text", fullPrompt))
         val contents = JSONArray().put(JSONObject().put("parts", parts))
         val generationConfig = JSONObject()
             .put("responseMimeType", "application/json")
@@ -51,7 +70,7 @@ class GeminiMenuAnalyzer(private val apiKey: String) {
             setRequestProperty("Content-Type", "application/json; charset=utf-8")
             doOutput = true
             connectTimeout = 10_000
-            readTimeout = 30_000
+            readTimeout = 20_000
         }
         try {
             OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use { it.write(body) }
@@ -100,7 +119,6 @@ class GeminiMenuAnalyzer(private val apiKey: String) {
         return out
     }
 
-    /** Boc ngoai ```json ... ``` neu Gemini van vo tinh wrap. */
     private fun stripCodeFence(text: String): String {
         var s = text.trim()
         if (s.startsWith("```")) {
@@ -113,29 +131,35 @@ class GeminiMenuAnalyzer(private val apiKey: String) {
 
     private fun parseVndAmount(raw: String): Long? {
         if (raw.isBlank()) return null
-        val cleaned = raw.replace(Regex("[^0-9kK]"), "")
-        val hasK = cleaned.endsWith("k", ignoreCase = true)
-        val digits = cleaned.trimEnd('k', 'K')
+        val s = raw.lowercase()
+        val hasK = s.contains("k") || s.contains("nghin") || s.contains("nghìn")
+        val digits = raw.replace(Regex("[^0-9]"), "")
         val n = digits.toLongOrNull() ?: return null
-        val amount = if (hasK) n * 1_000L else n
+        val amount = if (hasK && n < 1_000) n * 1_000L else n
         return amount.takeIf { it in 1_000L..10_000_000L }
-    }
-
-    private fun Bitmap.toBase64Jpeg(quality: Int): String {
-        val baos = ByteArrayOutputStream()
-        compress(Bitmap.CompressFormat.JPEG, quality, baos)
-        return Base64.encodeToString(baos.toByteArray(), Base64.NO_WRAP)
     }
 
     class GeminiException(message: String) : RuntimeException(message)
 
     private companion object {
         const val TAG = "GeminiMenuAnalyzer"
+        const val MAX_RETRIES = 3
         const val API_URL =
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
-        const val JPEG_QUALITY = 85
-        const val PROMPT = """Đây là ảnh chụp trực tiếp menu nhà hàng. Hãy nhìn kỹ hình ảnh, nhận diện toàn bộ chữ và trích xuất danh sách món ăn cùng giá tiền tương ứng.
-Trả về JSON với format chính xác: {"items": [{"name": "tên món", "price": "giá"}]}
-Lưu ý: Chỉ trả về chuỗi JSON nguyên bản, không bọc trong ký tự ```json ... ```, không giải thích hoặc thêm bất kỳ văn bản nào khác."""
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent"
+
+        /**
+         * Prompt cho Gemini Flash: input la TEXT THO tu ML Kit OCR.
+         * Output: JSON nguyen ban {"items":[{"name","price"}]}.
+         */
+        const val PROMPT_TEMPLATE = """Bạn được cung cấp RAW TEXT trích xuất từ ảnh chụp menu nhà hàng Việt Nam (OCR có thể bị sai chính tả, mất dấu, layout cột bị xáo trộn).
+
+Nhiệm vụ:
+1. Phân tích raw text bên dưới, ghép cặp tên món với giá tiền tương ứng.
+2. Bỏ qua header/section như "MENU", "ĐỒ ĂN", "ĐỒ UỐNG", địa chỉ, số điện thoại, hashtag, lời chào.
+3. Giá có thể ghi: "50.000", "50000", "50k", "50 nghìn", "50N" — chuẩn hóa về dạng đầy đủ "50.000".
+4. Nếu một dòng có tên món nhưng không có giá kèm, vẫn đưa vào (price="").
+5. Trả về JSON với format CHÍNH XÁC: {"items":[{"name":"tên món","price":"giá"}]}
+
+Lưu ý: chỉ trả về JSON nguyên bản, KHÔNG bọc trong ```json ... ```, KHÔNG giải thích, KHÔNG thêm văn bản ngoài JSON."""
     }
 }

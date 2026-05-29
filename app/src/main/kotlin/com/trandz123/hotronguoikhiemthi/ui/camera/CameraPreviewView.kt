@@ -1,6 +1,7 @@
 package com.trandz123.hotronguoikhiemthi.ui.camera
 
 import android.content.Context
+import android.util.Size
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.FocusMeteringAction
 import androidx.camera.core.ImageAnalysis
@@ -55,8 +56,12 @@ fun CameraPreviewView(
         val preview = Preview.Builder().build().also {
             it.setSurfaceProvider(previewView.surfaceProvider)
         }
+        // 1080p du cho OCR menu — nho hon = nhanh hon (encode JPEG, transfer, ML Kit)
+        // CAPTURE_MODE_MINIMIZE_LATENCY: bo qua post-processing (HDR) → capture < 300ms
         val imageCapture = ImageCapture.Builder()
             .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+            .setTargetResolution(Size(1080, 1920))
+            .setJpegQuality(85)
             .build()
 
         val useCases = mutableListOf<UseCase>(preview, imageCapture)

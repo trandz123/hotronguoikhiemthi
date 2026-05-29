@@ -6,7 +6,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,12 +35,22 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.trandz123.hotronguoikhiemthi.ml.MoneyClassifier
 import com.trandz123.hotronguoikhiemthi.ml.MoneyResult
 import com.trandz123.hotronguoikhiemthi.ui.camera.CameraPreviewView
-import com.trandz123.hotronguoikhiemthi.ui.camera.FrameQualityAnalyzer
-import com.trandz123.hotronguoikhiemthi.ui.camera.captureBitmap
+import com.trandz123.hotronguoikhiemthi.ui.camera.LiveMoneyAnalyzer
 import com.trandz123.hotronguoikhiemthi.util.hapticStrong
 import com.trandz123.hotronguoikhiemthi.util.hapticTick
+import dagger.hilt.EntryPoint
+import dagger.hilt.InstallIn
+import dagger.hilt.android.EntryPointAccessors
+import dagger.hilt.components.SingletonComponent
+
+@EntryPoint
+@InstallIn(SingletonComponent::class)
+interface MoneyClassifierEntryPoint {
+    fun moneyClassifier(): MoneyClassifier
+}
 
 @Composable
 fun MoneyScreen(
@@ -102,13 +111,11 @@ private fun MoneyContent(
     val context = LocalContext.current
     val state by viewModel.state.collectAsState()
 
-    var imageCapture by remember {
-        mutableStateOf<androidx.camera.core.ImageCapture?>(null)
-    }
-    var autoCaptureEnabled by remember { mutableStateOf(true) }
-
-    LaunchedEffect(Unit) {
-        autoCaptureEnabled = viewModel.resolveAutoCapture()
+    // Lay classifier qua EntryPoint (Hilt @Singleton — share voi MoneyViewModel khong injected truc tiep)
+    val classifier = remember {
+        EntryPointAccessors
+            .fromApplication(context.applicationContext, MoneyClassifierEntryPoint::class.java)
+            .moneyClassifier()
     }
 
     // Rung manh khi nhan dien duoc tien.
@@ -119,21 +126,17 @@ private fun MoneyContent(
         }
     }
 
-    val analyzer = remember(autoCaptureEnabled) {
-        FrameQualityAnalyzer(
-            onResult = { q -> viewModel.onFrameQuality(q.brightness, q.sharpness) },
-            onStable = {
-                if (autoCaptureEnabled && state is MoneyUiState.Analyzing) {
-                    val ic = imageCapture ?: return@FrameQualityAnalyzer
-                    viewModel.onCapture { ic.captureBitmap(context) }
-                }
-            },
+    val analyzer = remember(classifier) {
+        LiveMoneyAnalyzer(
+            classifier = classifier,
+            onResult = { result -> viewModel.onLiveDetection(result) },
         )
     }
 
-    val swipeUpToMenu: () -> Unit = remember(onSwitchMode) {
+    val swipeUpToMenu: () -> Unit = remember(onSwitchMode, viewModel) {
         {
             hapticTick(context)
+            viewModel.switchToMenu()
             onSwitchMode()
         }
     }
@@ -142,16 +145,9 @@ private fun MoneyContent(
         CameraPreviewView(
             modifier = Modifier
                 .fillMaxSize()
-                .pointerInput(Unit) {
-                    detectTapGestures(onDoubleTap = {
-                        val ic = imageCapture ?: return@detectTapGestures
-                        viewModel.onCapture { ic.captureBitmap(context) }
-                    })
-                }
                 .pointerInput(swipeUpToMenu) {
-                    // Theo spec UX:
-                    //  - Vuot len   (dy < 0) → ve menu
-                    //  - Vuot xuong (dy > 0) → reset quet lai
+                    // UX: vuot LEN duy nhat = chuyen sang Menu mode.
+                    // Khong xu ly vuot xuong (live YOLO tu reset, khong can scanAgain thu cong).
                     var dx = 0f
                     var dy = 0f
                     detectDragGestures(
@@ -159,20 +155,13 @@ private fun MoneyContent(
                         onDragEnd = {
                             val absX = kotlin.math.abs(dx)
                             val absY = kotlin.math.abs(dy)
-                            when {
-                                absX < 100f && absY < 100f -> Unit
-                                absY > absX -> {
-                                    if (dy < 0) swipeUpToMenu()
-                                    else viewModel.scanAgain()
-                                }
-                                else -> Unit
-                            }
+                            if (absY > absX && absY > 100f && dy < 0) swipeUpToMenu()
                         },
                         onDrag = { _, drag -> dx += drag.x; dy += drag.y },
                     )
                 },
             analyzer = analyzer,
-            onCameraReady = { ic -> imageCapture = ic },
+            onCameraReady = { /* ImageCapture khong dung cho money screen */ },
         )
 
         Column(
@@ -180,8 +169,7 @@ private fun MoneyContent(
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .background(Color.Black.copy(alpha = 0.7f))
-                .padding(horizontal = 24.dp, vertical = 32.dp)
-                .semantics { liveRegion = LiveRegionMode.Polite },
+                .padding(horizontal = 24.dp, vertical = 32.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
@@ -198,7 +186,7 @@ private fun MoneyContent(
                 textAlign = TextAlign.Center,
             )
             Text(
-                "Vuốt lên để chuyển sang đọc menu. Vuốt xuống để quét lại.",
+                "Vuốt lên để chuyển sang đọc menu.",
                 fontSize = 16.sp,
                 color = Color.White.copy(alpha = 0.85f),
                 textAlign = TextAlign.Center,
@@ -209,7 +197,5 @@ private fun MoneyContent(
 
 private fun statusText(state: MoneyUiState): String = when (state) {
     is MoneyUiState.Analyzing -> "Đang tìm tờ tiền..."
-    MoneyUiState.Capturing -> "Đang chụp..."
-    MoneyUiState.Classifying -> "Đang nhận diện..."
     is MoneyUiState.Result -> state.spokenText
 }

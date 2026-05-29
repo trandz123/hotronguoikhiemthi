@@ -37,8 +37,9 @@ sealed class MoneyResult {
 }
 
 /**
- * Lop output cua model (theo thu tu trong vnd_labels.txt).
- * INDEX phai trung voi file labels.txt → assets/ml/vnd_labels.txt.
+ * Lop output cua model (theo thu tu trong vnd_yolov10n_labels.txt).
+ * INDEX phai trung voi file labels → assets/ml/vnd_yolov10n_labels.txt.
+ * YOLOv10n khong co class "unknown", dung MIN_CONFIDENCE de loc.
  */
 val MONEY_LABELS: List<MoneyLabel> = listOf(
     MoneyLabel(500_000L, "500000"),
@@ -50,7 +51,6 @@ val MONEY_LABELS: List<MoneyLabel> = listOf(
     MoneyLabel(5_000L, "5000"),
     MoneyLabel(2_000L, "2000"),
     MoneyLabel(1_000L, "1000"),
-    MoneyLabel(0L, "unknown"),
 )
 
 data class MoneyLabel(val denominationVnd: Long, val rawLabel: String) {

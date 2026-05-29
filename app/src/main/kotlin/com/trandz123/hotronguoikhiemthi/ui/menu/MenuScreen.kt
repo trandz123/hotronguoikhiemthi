@@ -111,9 +111,10 @@ private fun MenuContent(
     // Tu dong scan lai sau khi error message duoc phat — cho user co the vuot len.
     // Khong auto reset; user vuot len -> scanAgain().
 
-    val swipeDownToMoney: () -> Unit = remember(onSwitchMode) {
+    val swipeUpToMoney: () -> Unit = remember(onSwitchMode, viewModel) {
         {
             hapticTick(context)
+            viewModel.switchToMoney()
             onSwitchMode()
         }
     }
@@ -124,11 +125,10 @@ private fun MenuContent(
             is MenuUiState.Loaded -> {
                 LoadedView(
                     state = state,
-                    onSwipeNext = { viewModel.nextItem() },
-                    onSwipePrev = { viewModel.prevItem() },
-                    onSwipeUp = { viewModel.scanAgain() }, // re-scan menu
-                    onSwipeDown = { swipeDownToMoney() }, // sang tien
-                    onDoubleTap = { viewModel.readAll() },
+                    onSwipeNext = { hapticTick(context); viewModel.nextItem() },
+                    onSwipePrev = { hapticTick(context); viewModel.prevItem() },
+                    onSwipeUp = { swipeUpToMoney() }, // chuyen mode (dong nhat voi Money screen)
+                    onDoubleTap = { hapticTick(context); viewModel.scanAgain() }, // re-scan menu
                 )
             }
             else -> {
@@ -137,14 +137,13 @@ private fun MenuContent(
                         .fillMaxSize()
                         .pointerInput(Unit) {
                             detectTapGestures(onDoubleTap = {
-                                val ic = imageCapture ?: return@detectTapGestures
-                                viewModel.onCapture { ic.captureBitmap(context) }
+                                // Double tap = scan lai menu thu cong
+                                hapticTick(context)
+                                viewModel.scanAgain()
                             })
                         }
-                        .pointerInput(swipeDownToMoney) {
-                            // Theo spec UX:
-                            //  - Vuot xuong (dy > 0) → chuyen sang doc tien
-                            //  - Vuot len   (dy < 0) → chup lai menu (scanAgain → Idle → countdown)
+                        .pointerInput(swipeUpToMoney) {
+                            // UX dong nhat: vuot LEN = chuyen sang doc tien.
                             var dx = 0f
                             var dy = 0f
                             detectDragGestures(
@@ -152,14 +151,7 @@ private fun MenuContent(
                                 onDragEnd = {
                                     val absX = kotlin.math.abs(dx)
                                     val absY = kotlin.math.abs(dy)
-                                    when {
-                                        absX < 100f && absY < 100f -> Unit
-                                        absY > absX -> {
-                                            if (dy > 0) swipeDownToMoney()
-                                            else viewModel.scanAgain()
-                                        }
-                                        else -> Unit
-                                    }
+                                    if (absY > absX && absY > 100f && dy < 0) swipeUpToMoney()
                                 },
                                 onDrag = { _, drag -> dx += drag.x; dy += drag.y },
                             )
@@ -172,8 +164,7 @@ private fun MenuContent(
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
                         .background(Color.Black.copy(alpha = 0.7f))
-                        .padding(horizontal = 24.dp, vertical = 32.dp)
-                        .semantics { liveRegion = LiveRegionMode.Polite },
+                        .padding(horizontal = 24.dp, vertical = 32.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
@@ -190,7 +181,7 @@ private fun MenuContent(
                         textAlign = TextAlign.Center,
                     )
                     Text(
-                        "Vuốt xuống để chuyển sang đọc tiền. Vuốt lên để chụp lại.",
+                        "Vuốt lên để chuyển sang đọc tiền.",
                         fontSize = 16.sp,
                         color = Color.White.copy(alpha = 0.85f),
                         textAlign = TextAlign.Center,
@@ -207,7 +198,6 @@ private fun LoadedView(
     onSwipeNext: () -> Unit,
     onSwipePrev: () -> Unit,
     onSwipeUp: () -> Unit,
-    onSwipeDown: () -> Unit,
     onDoubleTap: () -> Unit,
 ) {
     val loaded = state as? MenuUiState.Loaded ?: return
@@ -233,14 +223,14 @@ private fun LoadedView(
                         when {
                             absX < 80f && absY < 80f -> Unit
                             absX > absY -> if (dx > 0) onSwipeNext() else onSwipePrev()
-                            else -> if (dy < 0) onSwipeUp() else onSwipeDown()
+                            // Chi xu ly vuot LEN, bo vuot xuong (dong nhat voi money screen)
+                            else -> if (dy < 0) onSwipeUp()
                         }
                     },
                     onDrag = { _, drag -> dx += drag.x; dy += drag.y },
                 )
             }
-            .padding(24.dp)
-            .semantics { liveRegion = LiveRegionMode.Polite },
+            .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp, Alignment.CenterVertically),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -262,7 +252,7 @@ private fun LoadedView(
             textAlign = TextAlign.Center,
         )
         Text(
-            "Vuốt phải sang món tiếp, vuốt trái lùi, vuốt lên chụp lại menu, vuốt xuống sang đọc tiền.",
+            "Vuốt phải sang món tiếp, vuốt trái lùi. Vuốt lên sang đọc tiền. Chạm đôi để quét lại menu.",
             fontSize = 16.sp,
             color = Color.White.copy(alpha = 0.7f),
             textAlign = TextAlign.Center,
@@ -274,7 +264,8 @@ private fun statusText(state: MenuUiState): String = when (state) {
     MenuUiState.Idle -> "Sẵn sàng..."
     is MenuUiState.CountingDown -> "Lấy nét... ${state.secondsLeft.coerceAtLeast(0)}"
     MenuUiState.Capturing -> "Đang chụp..."
-    MenuUiState.Processing -> "Đang phân tích menu..."
+    MenuUiState.OcrProcessing -> "Đang đọc chữ..."
+    MenuUiState.GeminiParsing -> "Đang ghép món..."
     is MenuUiState.Loaded -> "Đã có ${state.items.size} món"
     is MenuUiState.Reading -> "Đang đọc..."
     is MenuUiState.Error -> "Lỗi: ${state.message}"

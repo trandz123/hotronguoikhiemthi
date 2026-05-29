@@ -23,14 +23,20 @@ class MenuOcrEngine @Inject constructor() {
     )
 
     /**
-     * Chay OCR tren bitmap, parse thanh [MenuItem]. Suspend cho den khi xong.
+     * Chay OCR tren bitmap, tra ve RAW TEXT (chua parse).
+     * Pipeline moi: MenuViewModel se gui text nay len Gemini de parse cap mon-gia.
+     *
+     * Text duoc ghep theo thu tu doc tu nhien: cac line trong cung block ngat \n,
+     * cac block ngat \n\n -> Gemini phan biet duoc cot/section.
      */
-    suspend fun extract(bitmap: Bitmap): List<MenuItem> = suspendCancellableCoroutine { cont ->
+    suspend fun extractRawText(bitmap: Bitmap): String = suspendCancellableCoroutine { cont ->
         val image = InputImage.fromBitmap(bitmap, 0)
         recognizer.process(image)
             .addOnSuccessListener { text ->
-                val items = MenuOcrParser.parse(text)
-                cont.resume(items)
+                val raw = text.textBlocks.joinToString("\n\n") { block ->
+                    block.lines.joinToString("\n") { it.text }
+                }
+                cont.resume(raw)
             }
             .addOnFailureListener { e -> cont.resumeWithException(e) }
     }

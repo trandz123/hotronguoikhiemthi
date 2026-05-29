@@ -15,6 +15,12 @@ val localProps = Properties().apply {
 }
 val fptTtsKey: String = localProps.getProperty("fpt.tts.api.key", "")
 val geminiApiKey: String = localProps.getProperty("gemini.api.key", "")
+val groqApiKey: String = localProps.getProperty("groq.api.key", "")
+
+val releaseKeystorePath: String = localProps.getProperty("release.keystore.path", "")
+val releaseKeystorePassword: String = localProps.getProperty("release.keystore.password", "")
+val releaseKeyAlias: String = localProps.getProperty("release.key.alias", "")
+val releaseKeyPassword: String = localProps.getProperty("release.key.password", "")
 
 android {
     namespace = "com.trandz123.hotronguoikhiemthi"
@@ -24,8 +30,8 @@ android {
         applicationId = "com.trandz123.hotronguoikhiemthi"
         minSdk = 26
         targetSdk = 36
-        versionCode = 4
-        versionName = "0.4.0"
+        versionCode = 5
+        versionName = "0.5.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
@@ -34,16 +40,32 @@ android {
         // Engine FPT se tu fallback sang Android TTS khi key trong.
         buildConfigField("String", "FPT_TTS_API_KEY", "\"$fptTtsKey\"")
         buildConfigField("String", "GEMINI_API_KEY", "\"$geminiApiKey\"")
+        buildConfigField("String", "GROQ_API_KEY", "\"$groqApiKey\"")
+    }
+
+    signingConfigs {
+        if (releaseKeystorePath.isNotBlank()) {
+            create("release") {
+                storeFile = file(releaseKeystorePath)
+                storePassword = releaseKeystorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = true
-            isShrinkResources = true
+            // Tat minify de tranh ProGuard strip Hilt/Compose code chua co rule
+            isMinifyEnabled = false
+            isShrinkResources = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            if (releaseKeystorePath.isNotBlank()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
