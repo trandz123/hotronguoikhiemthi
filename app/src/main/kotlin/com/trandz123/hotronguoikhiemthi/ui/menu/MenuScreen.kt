@@ -127,8 +127,10 @@ private fun MenuContent(
                     state = state,
                     onSwipeNext = { hapticTick(context); viewModel.nextItem() },
                     onSwipePrev = { hapticTick(context); viewModel.prevItem() },
-                    onSwipeUp = { swipeUpToMoney() }, // chuyen mode (dong nhat voi Money screen)
-                    onDoubleTap = { hapticTick(context); viewModel.scanAgain() }, // re-scan menu
+                    onSwipeUp = { swipeUpToMoney() },
+                    onSwipeDown = { hapticTick(context); viewModel.selectCurrent() },
+                    onDoubleTap = { hapticTick(context); viewModel.readSelected() },
+                    onLongPress = { hapticTick(context); viewModel.scanAgain() },
                 )
             }
             else -> {
@@ -198,19 +200,29 @@ private fun LoadedView(
     onSwipeNext: () -> Unit,
     onSwipePrev: () -> Unit,
     onSwipeUp: () -> Unit,
+    onSwipeDown: () -> Unit,
     onDoubleTap: () -> Unit,
+    onLongPress: () -> Unit,
 ) {
     val loaded = state as? MenuUiState.Loaded ?: return
     val items = loaded.items
     val currentIndex = loaded.currentIndex
     val current = items.getOrNull(currentIndex)
+    val isSelected = current?.let { c ->
+        loaded.selectedItems.any { it.name == c.name && it.priceVnd == c.priceVnd }
+    } ?: false
+    val selectedCount = loaded.selectedItems.size
+    val selectedTotal = loaded.selectedItems.mapNotNull { it.priceVnd }.sum()
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
             .pointerInput(Unit) {
-                detectTapGestures(onDoubleTap = { onDoubleTap() })
+                detectTapGestures(
+                    onDoubleTap = { onDoubleTap() },
+                    onLongPress = { onLongPress() },
+                )
             }
             .pointerInput(Unit) {
                 var dx = 0f
@@ -223,15 +235,14 @@ private fun LoadedView(
                         when {
                             absX < 80f && absY < 80f -> Unit
                             absX > absY -> if (dx > 0) onSwipeNext() else onSwipePrev()
-                            // Chi xu ly vuot LEN, bo vuot xuong (dong nhat voi money screen)
-                            else -> if (dy < 0) onSwipeUp()
+                            else -> if (dy < 0) onSwipeUp() else onSwipeDown()
                         }
                     },
                     onDrag = { _, drag -> dx += drag.x; dy += drag.y },
                 )
             }
             .padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp, Alignment.CenterVertically),
+        verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
@@ -241,9 +252,9 @@ private fun LoadedView(
             modifier = Modifier.semantics { heading() },
         )
         Text(
-            "Món ${currentIndex + 1}/${items.size}",
+            "Món ${currentIndex + 1}/${items.size}" + if (isSelected) " ✓ đã chọn" else "",
             fontSize = 22.sp,
-            color = Color.White.copy(alpha = 0.8f),
+            color = if (isSelected) Color.Green else Color.White.copy(alpha = 0.8f),
         )
         Text(
             current?.let { it.name + (it.priceVnd?.let { p -> " — ${formatVnd(p)} đồng" } ?: "") } ?: "",
@@ -251,9 +262,19 @@ private fun LoadedView(
             color = Color.Yellow,
             textAlign = TextAlign.Center,
         )
+        if (selectedCount > 0) {
+            Text(
+                "Đã chọn: $selectedCount món" +
+                    if (selectedTotal > 0) " — ${formatVnd(selectedTotal)} đồng" else "",
+                fontSize = 18.sp,
+                color = Color.Green,
+                textAlign = TextAlign.Center,
+            )
+        }
         Text(
-            "Vuốt phải sang món tiếp, vuốt trái lùi. Vuốt lên sang đọc tiền. Chạm đôi để quét lại menu.",
-            fontSize = 16.sp,
+            "Vuốt phải/trái: món tiếp/trước. Vuốt xuống: chọn món. " +
+                "Chạm đôi: nghe danh sách đã chọn. Giữ lâu: quét lại menu. Vuốt lên: đọc tiền.",
+            fontSize = 14.sp,
             color = Color.White.copy(alpha = 0.7f),
             textAlign = TextAlign.Center,
         )

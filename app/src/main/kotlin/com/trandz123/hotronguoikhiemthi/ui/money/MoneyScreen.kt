@@ -6,6 +6,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,9 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.heading
-import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -41,6 +40,7 @@ import com.trandz123.hotronguoikhiemthi.ui.camera.CameraPreviewView
 import com.trandz123.hotronguoikhiemthi.ui.camera.LiveMoneyAnalyzer
 import com.trandz123.hotronguoikhiemthi.util.hapticStrong
 import com.trandz123.hotronguoikhiemthi.util.hapticTick
+import com.trandz123.hotronguoikhiemthi.util.toVietnameseMoney
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
@@ -110,19 +110,22 @@ private fun MoneyContent(
 ) {
     val context = LocalContext.current
     val state by viewModel.state.collectAsState()
+    val mode by viewModel.mode.collectAsState()
+    val counting by viewModel.counting.collectAsState()
 
-    // Lay classifier qua EntryPoint (Hilt @Singleton — share voi MoneyViewModel khong injected truc tiep)
     val classifier = remember {
         EntryPointAccessors
             .fromApplication(context.applicationContext, MoneyClassifierEntryPoint::class.java)
             .moneyClassifier()
     }
 
-    // Rung manh khi nhan dien duoc tien.
+    // Rung manh khi nhan dien duoc tien (ca NORMAL va COUNTING)
     LaunchedEffect(state) {
         val s = state
-        if (s is MoneyUiState.Result && s.moneyResult is MoneyResult.Recognized) {
-            hapticStrong(context)
+        when (s) {
+            is MoneyUiState.Result -> if (s.moneyResult is MoneyResult.Recognized) hapticStrong(context)
+            is MoneyUiState.Counting -> if (s.billCount > 0) hapticStrong(context)
+            else -> {}
         }
     }
 
@@ -133,21 +136,38 @@ private fun MoneyContent(
         )
     }
 
-    val swipeUpToMenu: () -> Unit = remember(onSwitchMode, viewModel) {
-        {
-            hapticTick(context)
-            viewModel.switchToMenu()
-            onSwitchMode()
-        }
+    val gestureHandler: GestureHandler = remember(mode, onSwitchMode, viewModel) {
+        GestureHandler(
+            onUp = {
+                hapticTick(context)
+                when (mode) {
+                    Mode.NORMAL -> { viewModel.switchToMenu(); onSwitchMode() }
+                    Mode.COUNTING -> viewModel.readTotal()
+                }
+            },
+            onDown = {
+                hapticTick(context)
+                if (mode == Mode.COUNTING) viewModel.resetCount()
+            },
+            onLeft = {
+                hapticTick(context)
+                if (mode == Mode.COUNTING) viewModel.exitCountingMode()
+            },
+            onRight = {
+                hapticTick(context)
+                when (mode) {
+                    Mode.NORMAL -> viewModel.enterCountingMode()
+                    Mode.COUNTING -> viewModel.repeatLastAdded()
+                }
+            },
+        )
     }
 
     Box(modifier = modifier.fillMaxSize()) {
         CameraPreviewView(
             modifier = Modifier
                 .fillMaxSize()
-                .pointerInput(swipeUpToMenu) {
-                    // UX: vuot LEN duy nhat = chuyen sang Menu mode.
-                    // Khong xu ly vuot xuong (live YOLO tu reset, khong can scanAgain thu cong).
+                .pointerInput(gestureHandler) {
                     var dx = 0f
                     var dy = 0f
                     detectDragGestures(
@@ -155,9 +175,25 @@ private fun MoneyContent(
                         onDragEnd = {
                             val absX = kotlin.math.abs(dx)
                             val absY = kotlin.math.abs(dy)
-                            if (absY > absX && absY > 100f && dy < 0) swipeUpToMenu()
+                            val threshold = 100f
+                            if (absY > absX && absY > threshold) {
+                                if (dy < 0) gestureHandler.onUp() else gestureHandler.onDown()
+                            } else if (absX > absY && absX > threshold) {
+                                if (dx > 0) gestureHandler.onRight() else gestureHandler.onLeft()
+                            }
                         },
                         onDrag = { _, drag -> dx += drag.x; dy += drag.y },
+                    )
+                }
+                .pointerInput(mode, viewModel) {
+                    detectTapGestures(
+                        onDoubleTap = {
+                            hapticTick(context)
+                            when (mode) {
+                                Mode.NORMAL -> viewModel.repeatLast()
+                                Mode.COUNTING -> viewModel.readTotal()
+                            }
+                        },
                     )
                 },
             analyzer = analyzer,
@@ -174,19 +210,19 @@ private fun MoneyContent(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
-                text = "Chế độ nhận diện tiền",
+                text = if (mode == Mode.COUNTING) "Chế độ đếm cộng dồn" else "Chế độ nhận diện tiền",
                 fontSize = 28.sp,
                 color = Color.White,
                 modifier = Modifier.semantics { heading() },
             )
             Text(
-                text = statusText(state),
+                text = statusText(mode, state, counting),
                 fontSize = 22.sp,
                 color = MaterialTheme.colorScheme.primary,
                 textAlign = TextAlign.Center,
             )
             Text(
-                "Vuốt lên để chuyển sang đọc menu.",
+                text = hintText(mode),
                 fontSize = 16.sp,
                 color = Color.White.copy(alpha = 0.85f),
                 textAlign = TextAlign.Center,
@@ -195,7 +231,27 @@ private fun MoneyContent(
     }
 }
 
-private fun statusText(state: MoneyUiState): String = when (state) {
-    is MoneyUiState.Analyzing -> "Đang tìm tờ tiền..."
-    is MoneyUiState.Result -> state.spokenText
+private class GestureHandler(
+    val onUp: () -> Unit,
+    val onDown: () -> Unit,
+    val onLeft: () -> Unit,
+    val onRight: () -> Unit,
+)
+
+private fun statusText(mode: Mode, state: MoneyUiState, counting: CountingState): String =
+    when (mode) {
+        Mode.NORMAL -> when (state) {
+            is MoneyUiState.Analyzing -> "Đang tìm tờ tiền..."
+            is MoneyUiState.Result -> state.spokenText
+            is MoneyUiState.Counting -> "Đang tìm tờ tiền..."
+        }
+        Mode.COUNTING -> {
+            if (counting.billCount == 0) "Đưa tờ tiền vào để bắt đầu"
+            else "${counting.billCount} tờ — ${counting.total.toVietnameseMoney()}"
+        }
+    }
+
+private fun hintText(mode: Mode): String = when (mode) {
+    Mode.NORMAL -> "Vuốt lên: menu. Vuốt phải: đếm cộng dồn."
+    Mode.COUNTING -> "Lên: nghe tổng. Xuống: xóa. Trái: thoát. Phải: lặp lại."
 }

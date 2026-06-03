@@ -130,44 +130,37 @@ class MenuViewModel @Inject constructor(
         }
 
         val summary = "Menu có ${items.size} món."
-        _state.value = MenuUiState.Loaded(items = items, currentIndex = 0, mode = ReadMode.IDLE)
-        tts.speak(summary)
+        _state.value = MenuUiState.Loaded(items = items, currentIndex = 0, selectedItems = emptyList())
         historyRepo.record(
             ScanType.MENU,
             summary + " " + items.take(5).joinToString("; ") { it.speakable() },
         )
-        readAllInternal()
-    }
-
-    private fun readAllInternal() {
-        val s = _state.value as? MenuUiState.Loaded ?: return
+        val first = items.first()
         readingJob?.cancel()
         readingJob = viewModelScope.launch {
-            _state.value = s.copy(mode = ReadMode.READING_ALL)
-            for ((i, item) in s.items.withIndex()) {
-                val cur = _state.value as? MenuUiState.Loaded ?: break
-                if (cur.mode != ReadMode.READING_ALL) break
-                _state.value = cur.copy(currentIndex = i, mode = ReadMode.READING_ALL)
-                val prefix = ordinalVi(i + 1)
-                tts.speak("$prefix ${item.speakable()}")
-            }
-            (_state.value as? MenuUiState.Loaded)?.let {
-                _state.value = it.copy(mode = ReadMode.IDLE)
-            }
+            tts.speak(
+                "$summary Món một: ${first.speakable()}. " +
+                    "Vuốt phải sang món tiếp, vuốt xuống để chọn món."
+            )
         }
     }
 
-    fun readAll() = readAllInternal()
-
     fun nextItem() {
         val s = _state.value as? MenuUiState.Loaded ?: return
-        val newIdx = (s.currentIndex + 1).coerceAtMost(s.items.lastIndex)
-        // STOP readAll loop + cancel speak hien tai NGAY truoc khi doc mon moi
+        if (s.currentIndex >= s.items.lastIndex) {
+            readingJob?.cancel(); tts.stop()
+            readingJob = viewModelScope.launch {
+                tts.speak("Đã đến món cuối, ${s.items.last().speakable()}.")
+            }
+            return
+        }
+        val newIdx = s.currentIndex + 1
         readingJob?.cancel()
         readingJob = null
         tts.stop()
-        _state.value = s.copy(currentIndex = newIdx, mode = ReadMode.IDLE)
-        viewModelScope.launch { tts.speak(s.items[newIdx].speakable()) }
+        _state.value = s.copy(currentIndex = newIdx)
+        val prefix = ordinalVi(newIdx + 1)
+        readingJob = viewModelScope.launch { tts.speak("$prefix ${s.items[newIdx].speakable()}") }
     }
 
     fun prevItem() {
@@ -176,8 +169,9 @@ class MenuViewModel @Inject constructor(
         readingJob?.cancel()
         readingJob = null
         tts.stop()
-        _state.value = s.copy(currentIndex = newIdx, mode = ReadMode.IDLE)
-        viewModelScope.launch { tts.speak(s.items[newIdx].speakable()) }
+        _state.value = s.copy(currentIndex = newIdx)
+        val prefix = ordinalVi(newIdx + 1)
+        readingJob = viewModelScope.launch { tts.speak("$prefix ${s.items[newIdx].speakable()}") }
     }
 
     fun repeatCurrent() {
@@ -185,14 +179,53 @@ class MenuViewModel @Inject constructor(
         readingJob?.cancel()
         readingJob = null
         tts.stop()
-        viewModelScope.launch { tts.speak(s.items[s.currentIndex].speakable()) }
+        readingJob = viewModelScope.launch { tts.speak(s.items[s.currentIndex].speakable()) }
+    }
+
+    /** Vuot xuong: chon mon hien tai. Idempotent — chon lai mon da co se thong bao. */
+    fun selectCurrent() {
+        val s = _state.value as? MenuUiState.Loaded ?: return
+        val cur = s.items.getOrNull(s.currentIndex) ?: return
+        readingJob?.cancel(); tts.stop()
+        val alreadySelected = s.selectedItems.any { it.name == cur.name && it.priceVnd == cur.priceVnd }
+        if (alreadySelected) {
+            readingJob = viewModelScope.launch { tts.speak("Món ${cur.name} đã có trong danh sách rồi.") }
+            return
+        }
+        val newSelected = s.selectedItems + cur
+        _state.value = s.copy(selectedItems = newSelected)
+        val total = newSelected.mapNotNull { it.priceVnd }.sum()
+        val hasPrice = newSelected.any { it.priceVnd != null }
+        val tail = if (hasPrice) "Tổng ${newSelected.size} món, ${total.toVietnameseWords()} đồng."
+        else "Đã chọn ${newSelected.size} món."
+        readingJob = viewModelScope.launch {
+            tts.speak("Đã chọn ${cur.name}. $tail")
+        }
+    }
+
+    /** Cham doi: nghe lai toan bo mon da chon + tong tien. */
+    fun readSelected() {
+        val s = _state.value as? MenuUiState.Loaded ?: return
+        readingJob?.cancel(); tts.stop()
+        if (s.selectedItems.isEmpty()) {
+            readingJob = viewModelScope.launch {
+                tts.speak("Chưa chọn món nào. Vuốt xuống để chọn món hiện tại.")
+            }
+            return
+        }
+        val total = s.selectedItems.mapNotNull { it.priceVnd }.sum()
+        val hasPrice = s.selectedItems.any { it.priceVnd != null }
+        val list = s.selectedItems.joinToString(", ") { it.name }
+        val tail = if (hasPrice) " Tổng ${total.toVietnameseWords()} đồng." else ""
+        readingJob = viewModelScope.launch {
+            tts.speak("Đã chọn ${s.selectedItems.size} món: $list.$tail")
+        }
     }
 
     fun stopReading() {
         readingJob?.cancel()
         readingJob = null
         tts.stop()
-        (_state.value as? MenuUiState.Loaded)?.let { _state.value = it.copy(mode = ReadMode.IDLE) }
     }
 
     fun scanAgain() {
@@ -242,14 +275,12 @@ sealed class MenuUiState {
     data class Loaded(
         val items: List<MenuItem>,
         val currentIndex: Int,
-        val mode: ReadMode,
+        val selectedItems: List<MenuItem> = emptyList(),
     ) : MenuUiState()
 
     data class Reading(val items: List<MenuItem>, val currentIndex: Int) : MenuUiState()
     data class Error(val message: String) : MenuUiState()
 }
-
-enum class ReadMode { IDLE, READING_ALL }
 
 private fun MenuItem.speakable(): String = when {
     priceVnd != null -> "$name, giá ${priceVnd.toVietnameseWords()} đồng"
