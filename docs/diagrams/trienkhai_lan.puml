@@ -1,0 +1,48 @@
+@startuml
+title Hinh 5.2. Mo hinh trien khai LAN: dien thoai <-> may chu suy luan noi bo
+
+skinparam shadowing false
+skinparam linetype ortho
+skinparam defaultFontName "Segoe UI"
+skinparam node {
+  BackgroundColor #F5F5F5
+  BorderColor #555555
+}
+skinparam component {
+  BackgroundColor #DAE8FC
+  BorderColor #6C8EBF
+}
+skinparam database {
+  BackgroundColor #F8CECC
+  BorderColor #B85450
+}
+
+node "Điện thoại Android\n(người dùng khiếm thị)" as Phone {
+  component "App Mắt AI\n(Compose UI + ViewModel)" as App
+  component "YOLOv10n — TFLite\n(nhận diện tiền, on-device)" as Yolo #FFE6CC
+  database "Room / DataStore\n(lịch sử, cài đặt)" as DB
+  component "Android TTS\n(giọng dự phòng)" as ATTS #FFF2CC
+}
+
+node "Máy chủ suy luận nội bộ\n(LAN server, có GPU)" as Server {
+  component "VLM đọc menu\n(LLaVA / Llama Vision)" as VLM #D5E8D4
+  component "Dịch vụ TTS\ntiếng Việt nội bộ" as TTS #FFF2CC
+}
+
+App ..> Yolo : gọi nội bộ
+App ..> DB : đọc / ghi
+App ..> ATTS : khi server offline
+
+Phone -[#1F6FBF,bold]-> Server : Wi-Fi / LAN nội bộ\nHTTP: ảnh menu -> JSON món+giá\nvăn bản -> âm thanh
+
+note bottom of Phone
+  Nhận diện tiền chạy hoàn toàn trên máy
+  (không cần mạng).
+end note
+
+note bottom of Server
+  Không phụ thuộc Internet / đám mây bên thứ ba.
+  Dữ liệu menu không ra khỏi tổ chức.
+end note
+
+@enduml

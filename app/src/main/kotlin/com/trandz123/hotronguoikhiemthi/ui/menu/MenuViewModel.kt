@@ -140,7 +140,10 @@ class MenuViewModel @Inject constructor(
         readingJob = viewModelScope.launch {
             tts.speak(
                 "$summary Món một: ${first.speakable()}. " +
-                    "Vuốt phải sang món tiếp, vuốt xuống để chọn món."
+                    "Vuốt phải sang món tiếp, vuốt trái về món trước. " +
+                    "Vuốt xuống để chọn món hiện tại. " +
+                    "Chạm đôi để nghe lại danh sách đã chọn. " +
+                    "Giữ lâu để quét lại menu. Vuốt lên sang đếm tiền."
             )
         }
     }

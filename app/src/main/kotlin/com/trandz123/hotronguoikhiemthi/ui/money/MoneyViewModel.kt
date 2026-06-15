@@ -17,11 +17,14 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
- * Live YOLO inference voi 2 mode:
+ * Money UX mirror voi Menu: live detect → TTS doc menh gia → user vuot xuong de chon.
  *
- *  - NORMAL: doc 1 to tien, cooldown 3s (UX cu).
- *  - COUNTING: cong don nhieu to. Anti-double-count = phai thay >= REQUIRED_CLEAR_FRAMES
- *    frame "khong co tien" giua hai lan add → ep user nhac to cu ra khoi khung.
+ * State:
+ *   - currentDetectedBill: to dang nam trong khung va da on dinh, CHUA cong vao tong.
+ *   - bills: danh sach cac to da chon (cong dồn).
+ *
+ * Anti-double-count: sau khi user vuot xuong chon 1 to → awaitingClear=true →
+ *   phai thay >= REQUIRED_CLEAR_FRAMES frame "khong co tien" moi cho dem to ke tiep.
  */
 @HiltViewModel
 class MoneyViewModel @Inject constructor(
@@ -29,80 +32,38 @@ class MoneyViewModel @Inject constructor(
     private val historyRepo: HistoryRepository,
 ) : ViewModel() {
 
-    private val _state = MutableStateFlow<MoneyUiState>(MoneyUiState.Analyzing)
+    private val _state = MutableStateFlow(MoneyUiState(0L, 0, null))
     val state: StateFlow<MoneyUiState> = _state.asStateFlow()
 
-    private val _mode = MutableStateFlow(Mode.NORMAL)
-    val mode: StateFlow<Mode> = _mode.asStateFlow()
-
-    private val _counting = MutableStateFlow(CountingState())
-    val counting: StateFlow<CountingState> = _counting.asStateFlow()
-
     private var idleReminderJob: Job? = null
-    private var cooldownJob: Job? = null
+    private var speakJob: Job? = null
     private var welcomeAnnounced = false
 
-    // Stability tracking (dung cho ca 2 mode)
     private var lastDenomination: Long = 0L
     private var stableCount: Int = 0
-
-    // COUNTING mode internal state
+    private var currentDetectedBill: Long = 0L
+    private var framesSinceLastDetection: Int = 0
     private var awaitingClear: Boolean = false
     private var clearFrameCount: Int = 0
-    private var lastAddedDenomination: Long = 0L
+    private var firstBillAnnounced: Boolean = false
     private val bills = mutableListOf<Long>()
 
     fun playWelcomeOnce() {
         if (welcomeAnnounced) return
         welcomeAnnounced = true
-        viewModelScope.launch { startIdleReminder() }
+        speakJob = viewModelScope.launch {
+            tts.stop()
+            tts.speak(WELCOME_MSG)
+        }
+        startIdleReminder()
     }
 
     fun onLiveDetection(result: MoneyResult) {
-        when (_mode.value) {
-            Mode.NORMAL -> handleNormal(result)
-            Mode.COUNTING -> handleCounting(result)
-        }
-    }
-
-    private fun handleNormal(result: MoneyResult) {
-        if (_state.value is MoneyUiState.Result) return
-
         val recognized = (result as? MoneyResult.Recognized)
             ?.takeIf { it.confidence >= STRICT_CONFIDENCE }
 
         if (recognized == null) {
-            lastDenomination = 0L
-            stableCount = 0
-            return
-        }
-
-        val denomination = recognized.denominationVnd
-        if (denomination == lastDenomination) {
-            stableCount += 1
-        } else {
-            lastDenomination = denomination
-            stableCount = 1
-        }
-
-        if (stableCount < REQUIRED_STABLE_FRAMES) return
-
-        stableCount = 0
-        idleReminderJob?.cancel()
-        val spoken = denomination.toVietnameseMoney()
-        _state.value = MoneyUiState.Result(recognized, spoken)
-        viewModelScope.launch {
-            tts.speak(spoken)
-            historyRepo.record(ScanType.MONEY, spoken)
-        }
-        startCooldown()
-    }
-
-    private fun handleCounting(result: MoneyResult) {
-        val recognized = (result as? MoneyResult.Recognized)
-            ?.takeIf { it.confidence >= STRICT_CONFIDENCE }
-
-        if (recognized == null) {
+            framesSinceLastDetection += 1
             if (awaitingClear) {
                 clearFrameCount += 1
                 if (clearFrameCount >= REQUIRED_CLEAR_FRAMES) {
@@ -110,227 +71,191 @@ class MoneyViewModel @Inject constructor(
                     clearFrameCount = 0
                 }
             }
-            lastDenomination = 0L
-            stableCount = 0
+            if (framesSinceLastDetection >= CLEAR_THRESHOLD && currentDetectedBill != 0L) {
+                currentDetectedBill = 0L
+                _state.value = _state.value.copy(currentBill = null)
+                lastDenomination = 0L
+                stableCount = 0
+            }
             return
         }
 
-        if (awaitingClear) {
-            // To cu (hoac to moi) van trong khung — cho user nhac ra
-            clearFrameCount = 0
-            return
-        }
-
+        framesSinceLastDetection = 0
         val denomination = recognized.denominationVnd
-        if (denomination == lastDenomination) {
-            stableCount += 1
-        } else {
+        if (awaitingClear) {
+            val lastSelected = bills.lastOrNull() ?: 0L
+            if (denomination != lastSelected) {
+                // Menh gia khac → chac chan to moi, bypass anti-double-count
+                awaitingClear = false
+                clearFrameCount = 0
+            } else {
+                // Cung menh gia voi to vua chon → cho user nhac ra
+                clearFrameCount = 0
+                return
+            }
+        }
+        if (denomination == lastDenomination) stableCount += 1
+        else {
             lastDenomination = denomination
             stableCount = 1
         }
-
         if (stableCount < REQUIRED_STABLE_FRAMES) return
 
-        bills.add(denomination)
-        lastAddedDenomination = denomination
-        val newTotal = bills.sum()
-        awaitingClear = true
-        clearFrameCount = 0
-        stableCount = 0
+        // Tờ mới (khác với tờ đang được track) → announce
+        if (denomination != currentDetectedBill) {
+            currentDetectedBill = denomination
+            _state.value = _state.value.copy(currentBill = denomination)
+            idleReminderJob?.cancel()
 
-        _counting.value = CountingState(total = newTotal, billCount = bills.size, lastAdded = denomination)
-        _state.value = MoneyUiState.Counting(newTotal, bills.size)
-
-        viewModelScope.launch {
-            tts.speak("Cộng ${denomination.toVietnameseMoney()}. Tổng ${newTotal.toVietnameseMoney()}.")
+            val isFirst = !firstBillAnnounced
+            firstBillAnnounced = true
+            val base = "Tờ ${denomination.toVietnameseMoney()}"
+            val msg = if (isFirst) "$base. $FIRST_BILL_GUIDE" else base
+            speakJob?.cancel()
+            speakJob = viewModelScope.launch {
+                tts.stop()
+                tts.speak(msg)
+            }
         }
     }
 
-    fun enterCountingMode() {
-        if (_mode.value == Mode.COUNTING) return
-        _mode.value = Mode.COUNTING
-        bills.clear()
-        lastAddedDenomination = 0L
-        awaitingClear = false
+    /** Vuot xuong: cong to dang detect vao tong (giong vuot xuong chon mon o menu). */
+    fun selectCurrent() {
+        if (currentDetectedBill == 0L) {
+            speakJob?.cancel()
+            speakJob = viewModelScope.launch {
+                tts.stop()
+                tts.speak("Chưa thấy tờ tiền nào, hãy đưa tờ tiền vào.")
+            }
+            return
+        }
+        val bill = currentDetectedBill
+        bills.add(bill)
+        val total = bills.sum()
+        currentDetectedBill = 0L
+        awaitingClear = true
         clearFrameCount = 0
-        stableCount = 0
         lastDenomination = 0L
-        cooldownJob?.cancel()
-        idleReminderJob?.cancel()
-        _counting.value = CountingState()
-        _state.value = MoneyUiState.Counting(0L, 0)
-        viewModelScope.launch {
+        stableCount = 0
+        _state.value = MoneyUiState(total = total, billCount = bills.size, currentBill = null)
+        speakJob?.cancel()
+        speakJob = viewModelScope.launch {
             tts.stop()
             tts.speak(
-                "Chế độ đếm cộng dồn. Đưa từng tờ tiền vào, nhấc ra rồi đưa tờ kế tiếp. " +
-                    "Vuốt lên nghe tổng. Vuốt xuống xóa. Vuốt trái thoát.",
+                "Đã chọn ${bill.toVietnameseMoney()}. " +
+                    "Tổng ${bills.size} tờ, ${total.toVietnameseMoney()}.",
             )
         }
     }
 
-    fun exitCountingMode() {
-        if (_mode.value != Mode.COUNTING) return
-        _mode.value = Mode.NORMAL
-        val finalTotal = bills.sum()
-        val finalCount = bills.size
-        bills.clear()
-        lastAddedDenomination = 0L
-        awaitingClear = false
-        clearFrameCount = 0
-        stableCount = 0
-        lastDenomination = 0L
-        _counting.value = CountingState()
-        _state.value = MoneyUiState.Analyzing
-        viewModelScope.launch {
-            tts.stop()
-            if (finalCount > 0) {
-                val msg = "Thoát chế độ đếm. Tổng $finalCount tờ, ${finalTotal.toVietnameseMoney()}."
-                tts.speak(msg)
-                historyRepo.record(ScanType.MONEY, msg)
-            } else {
-                tts.speak("Thoát chế độ đếm. Chưa cộng tờ nào.")
+    /** Cham doi: doc tong + danh sach da chon (giong cham doi o menu). */
+    fun readSelected() {
+        speakJob?.cancel()
+        if (bills.isEmpty()) {
+            speakJob = viewModelScope.launch {
+                tts.stop()
+                tts.speak("Chưa chọn tờ nào, vuốt xuống để chọn tờ đang thấy.")
             }
-            startIdleReminder()
+            return
         }
-    }
-
-    fun readTotal() {
-        if (_mode.value != Mode.COUNTING) return
+        val list = bills.joinToString(", ") { it.toVietnameseMoney() }
         val total = bills.sum()
-        val count = bills.size
-        viewModelScope.launch {
+        speakJob = viewModelScope.launch {
             tts.stop()
-            if (count == 0) {
-                tts.speak("Chưa cộng tờ nào, hãy đưa tờ tiền vào trước.")
-            } else {
-                tts.speak("Tổng $count tờ, ${total.toVietnameseMoney()}.")
-            }
+            tts.speak("Đã chọn ${bills.size} tờ: $list. Tổng ${total.toVietnameseMoney()}.")
         }
     }
 
-    fun resetCount() {
-        if (_mode.value != Mode.COUNTING) return
+    /** Giu lau: xoa het, dem lai (giong giu lau o menu = quet lai). */
+    fun scanAgain() {
         bills.clear()
-        lastAddedDenomination = 0L
+        lastDenomination = 0L
+        stableCount = 0
+        currentDetectedBill = 0L
+        framesSinceLastDetection = 0
         awaitingClear = false
         clearFrameCount = 0
-        stableCount = 0
-        lastDenomination = 0L
-        _counting.value = CountingState()
-        _state.value = MoneyUiState.Counting(0L, 0)
-        viewModelScope.launch {
+        firstBillAnnounced = false
+        _state.value = MoneyUiState(0L, 0, null)
+        speakJob?.cancel()
+        speakJob = viewModelScope.launch {
             tts.stop()
-            tts.speak("Đã xóa, bắt đầu đếm lại.")
+            tts.speak("Đã xóa, đếm lại từ đầu.")
         }
-    }
-
-    fun repeatLastAdded() {
-        if (_mode.value != Mode.COUNTING) return
-        val last = lastAddedDenomination
-        viewModelScope.launch {
-            tts.stop()
-            if (last == 0L) {
-                tts.speak("Chưa có tờ nào để lặp lại.")
-            } else {
-                tts.speak("Tờ vừa cộng: ${last.toVietnameseMoney()}. Tổng ${bills.sum().toVietnameseMoney()}.")
-            }
-        }
-    }
-
-    private fun startCooldown() {
-        cooldownJob?.cancel()
-        cooldownJob = viewModelScope.launch {
-            delay(COOLDOWN_MS)
-            lastDenomination = 0L
-            stableCount = 0
-            _state.value = MoneyUiState.Analyzing
-            startIdleReminder()
-        }
+        startIdleReminder()
     }
 
     private fun startIdleReminder() {
         idleReminderJob?.cancel()
         idleReminderJob = viewModelScope.launch {
             delay(IDLE_REMINDER_MS)
-            if (_state.value is MoneyUiState.Analyzing && _mode.value == Mode.NORMAL) {
-                tts.speak("Không tìm thấy tiền, hãy đưa tờ tiền vào giữa camera.")
+            if (currentDetectedBill == 0L && bills.isEmpty()) {
+                tts.speak("Đưa tờ tiền vào giữa camera.")
             }
         }
     }
 
-    /** Vuot xuong de quet lai tu dau (NORMAL mode) — huy cooldown. */
-    fun scanAgain() {
-        cooldownJob?.cancel()
+    /** Goi khi roi MoneyScreen. */
+    fun stopAll() {
+        speakJob?.cancel()
         idleReminderJob?.cancel()
         tts.stop()
+    }
+
+    /** Vuot len: chuyen sang menu — luu tong vao history truoc khi reset. */
+    fun switchToMenu() {
+        speakJob?.cancel()
+        idleReminderJob?.cancel()
+        val hadBills = bills.isNotEmpty()
+        val savedTotal = bills.sum()
+        val savedCount = bills.size
+        bills.clear()
+        currentDetectedBill = 0L
         lastDenomination = 0L
         stableCount = 0
-        _state.value = MoneyUiState.Analyzing
-        startIdleReminder()
-    }
-
-    /** Goi khi roi MoneyScreen (chuyen sang Menu). */
-    fun stopAll() {
-        cooldownJob?.cancel()
-        idleReminderJob?.cancel()
-        tts.stop()
-    }
-
-    /** Thong bao chuyen mode + huy het audio cu. */
-    fun switchToMenu() {
-        cooldownJob?.cancel()
-        idleReminderJob?.cancel()
-        val wasCounting = _mode.value == Mode.COUNTING && bills.isNotEmpty()
-        val savedTotal = if (wasCounting) bills.sum() else 0L
-        val savedCount = if (wasCounting) bills.size else 0
-        _mode.value = Mode.NORMAL
-        bills.clear()
-        _counting.value = CountingState()
-        viewModelScope.launch {
+        awaitingClear = false
+        clearFrameCount = 0
+        framesSinceLastDetection = 0
+        firstBillAnnounced = false
+        _state.value = MoneyUiState(0L, 0, null)
+        speakJob = viewModelScope.launch {
             tts.stop()
-            if (wasCounting) {
-                historyRepo.record(ScanType.MONEY, "Tổng $savedCount tờ: ${savedTotal.toVietnameseMoney()}")
+            if (hadBills) {
+                historyRepo.record(
+                    ScanType.MONEY,
+                    "Tổng $savedCount tờ: ${savedTotal.toVietnameseMoney()}",
+                )
             }
             tts.speak("Đang ở chế độ đọc menu")
-        }
-    }
-
-    /** Doc lai noi dung cuoi cung (NORMAL mode). */
-    fun repeatLast() {
-        val s = _state.value
-        if (s is MoneyUiState.Result) {
-            viewModelScope.launch { tts.speak(s.spokenText) }
         }
     }
 
     override fun onCleared() {
         super.onCleared()
         idleReminderJob?.cancel()
-        cooldownJob?.cancel()
+        speakJob?.cancel()
     }
 
     private companion object {
-        const val WELCOME_MONEY =
-            "Đang chuyển sang chế độ nhận diện tiền Việt Nam. Hãy đưa tờ tiền vào trước camera."
-        const val COOLDOWN_MS = 3_000L
-        const val IDLE_REMINDER_MS = 5_000L
+        const val WELCOME_MSG =
+            "Chế độ chọn tiền. Đưa tờ tiền vào trước camera, " +
+                "tôi sẽ đọc mệnh giá. Vuốt xuống để chọn tờ đó."
+        /** Phat sau khi to dau tien duoc nhan dien — nhac gesture chinh. */
+        const val FIRST_BILL_GUIDE =
+            "Vuốt xuống để chọn tờ này. Chạm đôi nghe tổng đã chọn. " +
+                "Giữ lâu để xóa và đếm lại. Vuốt lên sang menu."
+        const val IDLE_REMINDER_MS = 6_000L
         const val REQUIRED_STABLE_FRAMES = 1
         const val STRICT_CONFIDENCE = 0.70f
-        /** So frame "khong co tien" lien tiep can thay → coi nhu user da nhac to cu ra. */
-        const val REQUIRED_CLEAR_FRAMES = 5
+        /** Sau khi chon 1 to CUNG MENH GIA, doi user nhac ra >= 2 frame moi nhan to tiep. */
+        const val REQUIRED_CLEAR_FRAMES = 2
+        /** Sau >= 3 frame khong thay tien thi clear currentDetectedBill. */
+        const val CLEAR_THRESHOLD = 3
     }
 }
 
-enum class Mode { NORMAL, COUNTING }
-
-data class CountingState(
-    val total: Long = 0L,
-    val billCount: Int = 0,
-    val lastAdded: Long? = null,
+data class MoneyUiState(
+    val total: Long,
+    val billCount: Int,
+    val currentBill: Long?,
 )
-
-sealed class MoneyUiState {
-    data object Analyzing : MoneyUiState()
-    data class Result(val moneyResult: MoneyResult, val spokenText: String) : MoneyUiState()
-    data class Counting(val total: Long, val billCount: Int) : MoneyUiState()
-}

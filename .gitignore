@@ -41,6 +41,12 @@ Desktop.ini
 *.code-workspace
 
 # =========================
+# Claude Code (local config / memory — KHÔNG commit)
+# =========================
+.claude/
+CLAUDE.local.md
+
+# =========================
 # Python / ML training
 # =========================
 ml-training/dataset/

@@ -35,7 +35,6 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.trandz123.hotronguoikhiemthi.ml.MoneyClassifier
-import com.trandz123.hotronguoikhiemthi.ml.MoneyResult
 import com.trandz123.hotronguoikhiemthi.ui.camera.CameraPreviewView
 import com.trandz123.hotronguoikhiemthi.ui.camera.LiveMoneyAnalyzer
 import com.trandz123.hotronguoikhiemthi.util.hapticStrong
@@ -85,7 +84,7 @@ fun MoneyScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
-                "Cần quyền camera để nhận diện tiền",
+                "Cần quyền camera để chọn tiền",
                 fontSize = 28.sp,
                 color = Color.White,
                 textAlign = TextAlign.Center,
@@ -110,8 +109,6 @@ private fun MoneyContent(
 ) {
     val context = LocalContext.current
     val state by viewModel.state.collectAsState()
-    val mode by viewModel.mode.collectAsState()
-    val counting by viewModel.counting.collectAsState()
 
     val classifier = remember {
         EntryPointAccessors
@@ -119,14 +116,13 @@ private fun MoneyContent(
             .moneyClassifier()
     }
 
-    // Rung manh khi nhan dien duoc tien (ca NORMAL va COUNTING)
-    LaunchedEffect(state) {
-        val s = state
-        when (s) {
-            is MoneyUiState.Result -> if (s.moneyResult is MoneyResult.Recognized) hapticStrong(context)
-            is MoneyUiState.Counting -> if (s.billCount > 0) hapticStrong(context)
-            else -> {}
-        }
+    // Rung nhe khi nhan dien tho moi (giup nguoi mu biet app da thay)
+    LaunchedEffect(state.currentBill) {
+        if (state.currentBill != null) hapticTick(context)
+    }
+    // Rung manh khi them to vao tong (xac nhan chon thanh cong)
+    LaunchedEffect(state.billCount) {
+        if (state.billCount > 0) hapticStrong(context)
     }
 
     val analyzer = remember(classifier) {
@@ -136,38 +132,11 @@ private fun MoneyContent(
         )
     }
 
-    val gestureHandler: GestureHandler = remember(mode, onSwitchMode, viewModel) {
-        GestureHandler(
-            onUp = {
-                hapticTick(context)
-                when (mode) {
-                    Mode.NORMAL -> { viewModel.switchToMenu(); onSwitchMode() }
-                    Mode.COUNTING -> viewModel.readTotal()
-                }
-            },
-            onDown = {
-                hapticTick(context)
-                if (mode == Mode.COUNTING) viewModel.resetCount()
-            },
-            onLeft = {
-                hapticTick(context)
-                if (mode == Mode.COUNTING) viewModel.exitCountingMode()
-            },
-            onRight = {
-                hapticTick(context)
-                when (mode) {
-                    Mode.NORMAL -> viewModel.enterCountingMode()
-                    Mode.COUNTING -> viewModel.repeatLastAdded()
-                }
-            },
-        )
-    }
-
     Box(modifier = modifier.fillMaxSize()) {
         CameraPreviewView(
             modifier = Modifier
                 .fillMaxSize()
-                .pointerInput(gestureHandler) {
+                .pointerInput(viewModel, onSwitchMode) {
                     var dx = 0f
                     var dy = 0f
                     detectDragGestures(
@@ -176,28 +145,35 @@ private fun MoneyContent(
                             val absX = kotlin.math.abs(dx)
                             val absY = kotlin.math.abs(dy)
                             val threshold = 100f
+                            // Chi xu ly vuot doc (len = menu, xuong = chon)
                             if (absY > absX && absY > threshold) {
-                                if (dy < 0) gestureHandler.onUp() else gestureHandler.onDown()
-                            } else if (absX > absY && absX > threshold) {
-                                if (dx > 0) gestureHandler.onRight() else gestureHandler.onLeft()
+                                if (dy < 0) {
+                                    hapticTick(context)
+                                    viewModel.switchToMenu()
+                                    onSwitchMode()
+                                } else {
+                                    hapticTick(context)
+                                    viewModel.selectCurrent()
+                                }
                             }
                         },
                         onDrag = { _, drag -> dx += drag.x; dy += drag.y },
                     )
                 }
-                .pointerInput(mode, viewModel) {
+                .pointerInput(viewModel) {
                     detectTapGestures(
                         onDoubleTap = {
                             hapticTick(context)
-                            when (mode) {
-                                Mode.NORMAL -> viewModel.repeatLast()
-                                Mode.COUNTING -> viewModel.readTotal()
-                            }
+                            viewModel.readSelected()
+                        },
+                        onLongPress = {
+                            hapticTick(context)
+                            viewModel.scanAgain()
                         },
                     )
                 },
             analyzer = analyzer,
-            onCameraReady = { /* ImageCapture khong dung cho money screen */ },
+            onCameraReady = { /* khong dung ImageCapture cho money screen */ },
         )
 
         Column(
@@ -206,24 +182,34 @@ private fun MoneyContent(
                 .fillMaxWidth()
                 .background(Color.Black.copy(alpha = 0.7f))
                 .padding(horizontal = 24.dp, vertical = 32.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
-                text = if (mode == Mode.COUNTING) "Chế độ đếm cộng dồn" else "Chế độ nhận diện tiền",
+                text = "Chế độ chọn tiền",
                 fontSize = 28.sp,
                 color = Color.White,
                 modifier = Modifier.semantics { heading() },
             )
             Text(
-                text = statusText(mode, state, counting),
+                text = currentLine(state),
                 fontSize = 22.sp,
-                color = MaterialTheme.colorScheme.primary,
+                color = if (state.currentBill != null) Color.Yellow
+                else MaterialTheme.colorScheme.primary,
                 textAlign = TextAlign.Center,
             )
+            if (state.billCount > 0) {
+                Text(
+                    text = "Đã chọn: ${state.billCount} tờ — ${state.total.toVietnameseMoney()}",
+                    fontSize = 18.sp,
+                    color = Color.Green,
+                    textAlign = TextAlign.Center,
+                )
+            }
             Text(
-                text = hintText(mode),
-                fontSize = 16.sp,
+                text = "Vuốt xuống: chọn tờ này. Chạm đôi: nghe tổng. " +
+                    "Giữ lâu: xóa. Vuốt lên: sang menu.",
+                fontSize = 14.sp,
                 color = Color.White.copy(alpha = 0.85f),
                 textAlign = TextAlign.Center,
             )
@@ -231,27 +217,8 @@ private fun MoneyContent(
     }
 }
 
-private class GestureHandler(
-    val onUp: () -> Unit,
-    val onDown: () -> Unit,
-    val onLeft: () -> Unit,
-    val onRight: () -> Unit,
-)
-
-private fun statusText(mode: Mode, state: MoneyUiState, counting: CountingState): String =
-    when (mode) {
-        Mode.NORMAL -> when (state) {
-            is MoneyUiState.Analyzing -> "Đang tìm tờ tiền..."
-            is MoneyUiState.Result -> state.spokenText
-            is MoneyUiState.Counting -> "Đang tìm tờ tiền..."
-        }
-        Mode.COUNTING -> {
-            if (counting.billCount == 0) "Đưa tờ tiền vào để bắt đầu"
-            else "${counting.billCount} tờ — ${counting.total.toVietnameseMoney()}"
-        }
-    }
-
-private fun hintText(mode: Mode): String = when (mode) {
-    Mode.NORMAL -> "Vuốt lên: menu. Vuốt phải: đếm cộng dồn."
-    Mode.COUNTING -> "Lên: nghe tổng. Xuống: xóa. Trái: thoát. Phải: lặp lại."
+private fun currentLine(state: MoneyUiState): String = when {
+    state.currentBill != null -> "Đang thấy: ${state.currentBill.toVietnameseMoney()}"
+    state.billCount == 0 -> "Đưa tờ tiền vào để bắt đầu"
+    else -> "Đưa tờ tiếp theo vào"
 }
